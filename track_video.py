@@ -12,6 +12,7 @@ from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from boxmot.trackers.ocsort.ocsort import OcSort
 from boxmot.trackers.strongsort.strongsort import StrongSort
 from boxmot.trackers.deepocsort.deepocsort import DeepOcSort
+from boxmot.trackers.boosttrack.boosttrack import BoostTrack
 from boxmot.utils import ROOT, WEIGHTS
 
 def main(args):
@@ -51,6 +52,16 @@ def main(args):
             model_weights=Path(WEIGHTS / 'osnet_x0_25_msmt17.pt'),
             device=args.device,
             fp16=args.half
+        )
+    elif args.tracker == 'boosttrack':
+        tracker = BoostTrack(
+            reid_weights=Path(WEIGHTS / 'osnet_x0_25_msmt17.pt'),
+            device=args.device,
+            half=args.half,
+            max_age=60,
+            min_hits=3,
+            det_thresh=args.conf,
+            iou_threshold=0.3
         )
     else:
         raise ValueError(f'トラッカー {args.tracker} は対応していません。')
@@ -147,8 +158,8 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=str, default='line_fortuna_demo_multipersons.mp4', help='動画ファイルパス')
-    parser.add_argument('--yolo-model', type=str, default='yolov8n.pt', help='YOLOモデルパス')
-    parser.add_argument('--tracker', type=str, default='bytetrack', choices=['strongsort', 'bytetrack', 'botsort', 'ocsort', 'deepocsort'], help='トラッカーの種類')
+    parser.add_argument('--yolo-model', type=str, default='yolov10n.pt', help='YOLOモデルパス')
+    parser.add_argument('--tracker', type=str, default='bytetrack', choices=['strongsort', 'bytetrack', 'botsort', 'ocsort', 'deepocsort', 'boosttrack'], help='トラッカーの種類')
     parser.add_argument('--device', type=str, default='', help='使用するデバイス (例: cpu, 0)')
     parser.add_argument('--classes', type=int, nargs='+', default=0, help='検出するクラス（0:人）')
     parser.add_argument('--conf', type=float, default=0.3, help='検出信頼度閾値')
