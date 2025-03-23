@@ -158,7 +158,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=str, default='line_fortuna_demo_multipersons.mp4', help='動画ファイルパス')
-    parser.add_argument('--yolo-model', type=str, default='yolov10n.pt', help='YOLOモデルパス')
+    parser.add_argument('--yolo-model', type=str, default='yolo11n.pt', help='YOLOモデルパス')
     parser.add_argument('--tracker', type=str, default='bytetrack', choices=['strongsort', 'bytetrack', 'botsort', 'ocsort', 'deepocsort', 'boosttrack'], help='トラッカーの種類')
     parser.add_argument('--device', type=str, default='', help='使用するデバイス (例: cpu, 0)')
     parser.add_argument('--classes', type=int, nargs='+', default=0, help='検出するクラス（0:人）')
