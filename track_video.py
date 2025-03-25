@@ -4,7 +4,9 @@ import cv2
 import time
 import argparse
 import numpy as np
+import csv
 from pathlib import Path
+from datetime import datetime
 
 from ultralytics import YOLO
 from boxmot.trackers.botsort.botsort import BotSort
@@ -77,83 +79,160 @@ def main(args):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
-    frame_count = 0
-    start_time = time.time()
-    
-    # トラッキング処理
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    # ログファイルの設定
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f'log_{Path(video_path).stem}_{args.tracker}_{timestamp}.csv'
+    with open(log_file, 'w', newline='') as csvfile:
+        log_writer = csv.writer(csvfile)
+        log_writer.writerow(['Frame', 'Time', 'Detection_Time_ms', 'Tracking_Time_ms', 'Total_Time_ms', 
+                           'Objects_Detected', 'Objects_Tracked', 'FPS', 'YOLO_Preprocess_ms', 
+                           'YOLO_Inference_ms', 'YOLO_Postprocess_ms', 'CUDA_Used', 'Notes'])
         
-        frame_count += 1
+        frame_count = 0
+        start_time = time.time()
         
-        # YOLOでの検出
-        results = model.predict(frame, classes=args.classes, conf=args.conf)
+        # 処理時間計測用
+        detection_times = []
+        tracking_times = []
         
-        # 検出結果をboxmot用の形式に変換
-        boxes = results[0].boxes
-        dets_for_tracker = []
-        
-        if len(boxes) > 0:
-            for i in range(len(boxes)):
-                box = boxes[i].xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
-                conf = float(boxes[i].conf.cpu().numpy()[0])
-                cls = int(boxes[i].cls.cpu().numpy()[0])
-                
-                # [x1, y1, x2, y2, conf, class]の形式
-                dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
-            
-            dets_for_tracker = np.array(dets_for_tracker)
-        else:
-            dets_for_tracker = np.empty((0, 6))
-        
-        # トラッカーの更新
-        tracks = tracker.update(dets_for_tracker, frame)
-        
-        # 検出結果とトラッキング結果の描画
-        for d in tracks:
-            # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
-            x1, y1, x2, y2, track_id = d[:5]
-            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-            
-            # トラッキングIDとクラスラベルの表示
-            # クラスIDは6列目（インデックス5）にある場合が多いが、トラッカーによって異なる可能性がある
-            cls_id = 0  # デフォルトは人（クラス0）
-            if d.shape[0] > 6:
-                cls_id = int(d[6])
-            
-            label = f'ID: {int(track_id)}, {model.names[cls_id]}'
-            
-            # 枠の描画
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            
-            # ラベルの描画
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        
-        # 処理中の情報表示
-        elapsed_time = time.time() - start_time
-        fps_text = f'FPS: {frame_count / elapsed_time:.1f}'
-        cv2.putText(frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        
-        # 結果の書き込み
-        writer.write(frame)
-        
-        # プレビュー（必要に応じて）
-        if args.show:
-            cv2.imshow('Tracking', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+        # トラッキング処理
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
                 break
+            
+            frame_count += 1
+            
+            # YOLOでの検出 - 時間計測
+            detection_start = time.time()
+            results = model.predict(frame, classes=args.classes, conf=args.conf)
+            detection_end = time.time()
+            detection_time = (detection_end - detection_start) * 1000  # ミリ秒に変換
+            detection_times.append(detection_time)
+            
+            # YOLOの内部処理時間取得
+            yolo_preprocess = 0
+            yolo_inference = 0
+            yolo_postprocess = 0
+            
+            # 検出結果をboxmot用の形式に変換
+            boxes = results[0].boxes
+            dets_for_tracker = []
+            
+            if len(boxes) > 0:
+                for i in range(len(boxes)):
+                    box = boxes[i].xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
+                    conf = float(boxes[i].conf.cpu().numpy()[0])
+                    cls = int(boxes[i].cls.cpu().numpy()[0])
+                    
+                    # [x1, y1, x2, y2, conf, class]の形式
+                    dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
+                
+                dets_for_tracker = np.array(dets_for_tracker)
+            else:
+                dets_for_tracker = np.empty((0, 6))
+            
+            # YOLOのSpeed行からpreprocess, inference, postprocessの時間を抽出
+            if hasattr(results[0], '_speed'):
+                speed_info = results[0]._speed
+                if 'preprocess' in speed_info:
+                    yolo_preprocess = speed_info['preprocess']
+                if 'inference' in speed_info:
+                    yolo_inference = speed_info['inference']
+                if 'postprocess' in speed_info:
+                    yolo_postprocess = speed_info['postprocess']
+            
+            # トラッカーの更新 - 時間計測
+            tracking_start = time.time()
+            tracks = tracker.update(dets_for_tracker, frame)
+            tracking_end = time.time()
+            tracking_time = (tracking_end - tracking_start) * 1000  # ミリ秒に変換
+            tracking_times.append(tracking_time)
+            
+            # 合計処理時間を計算
+            total_time = detection_time + tracking_time
+            
+            # ログ出力（10フレームごと）
+            if frame_count % 10 == 0 or frame_count == 1:
+                print(f'Frame {frame_count}: Detection time {detection_time:.1f}ms, Tracking time {tracking_time:.1f}ms')
+            
+            # ログをCSVに記録
+            elapsed_time = time.time() - start_time
+            current_fps = frame_count / elapsed_time if elapsed_time > 0 else 0
+            
+            # CSVに記録
+            log_writer.writerow([
+                frame_count,                                  # フレーム番号
+                f'{elapsed_time:.3f}',                        # 経過時間（秒）
+                f'{detection_time:.1f}',                      # 検出時間（ms）
+                f'{tracking_time:.1f}',                       # 追跡時間（ms）
+                f'{total_time:.1f}',                          # 合計処理時間（ms）
+                len(boxes),                                   # 検出されたオブジェクト数
+                len(tracks),                                  # 追跡されたオブジェクト数
+                f'{current_fps:.1f}',                         # 現在のFPS
+                f'{yolo_preprocess:.1f}',                     # YOLO前処理時間
+                f'{yolo_inference:.1f}',                      # YOLO推論時間
+                f'{yolo_postprocess:.1f}',                    # YOLO後処理時間
+                'No' if args.device == 'cpu' else 'Yes',      # CUDAの使用
+                ''                                            # メモ欄
+            ])
+            
+            # 検出結果とトラッキング結果の描画
+            for d in tracks:
+                # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
+                x1, y1, x2, y2, track_id = d[:5]
+                x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+                
+                # トラッキングIDとクラスラベルの表示
+                # クラスIDは6列目（インデックス5）にある場合が多いが、トラッカーによって異なる可能性がある
+                cls_id = 0  # デフォルトは人（クラス0）
+                if d.shape[0] > 6:
+                    cls_id = int(d[6])
+                
+                label = f'ID: {int(track_id)}, {model.names[cls_id]}'
+                
+                # 枠の描画
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                
+                # ラベルの描画
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # 処理中の情報表示
+            elapsed_time = time.time() - start_time
+            fps_text = f'FPS: {frame_count / elapsed_time:.1f}'
+            detect_text = f'Detection: {detection_time:.1f}ms'
+            track_text = f'Tracking: {tracking_time:.1f}ms'
+            
+            cv2.putText(frame, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(frame, detect_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(frame, track_text, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            
+            # 結果の書き込み
+            writer.write(frame)
+            
+            # プレビュー（必要に応じて）
+            if args.show:
+                cv2.imshow('Tracking', frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+    
+    # 平均処理時間の計算
+    avg_detection_time = sum(detection_times) / len(detection_times) if detection_times else 0
+    avg_tracking_time = sum(tracking_times) / len(tracking_times) if tracking_times else 0
+    
+    print(f'\nTracking completed: {output_path}')
+    print(f'Total processing time: {elapsed_time:.1f} seconds')
+    print(f'Total frames: {frame_count}')
+    print(f'Average FPS: {frame_count / elapsed_time:.1f}')
+    print(f'Average detection time: {avg_detection_time:.1f}ms')
+    print(f'Average tracking time: {avg_tracking_time:.1f}ms')
+    print(f'Average total processing time: {avg_detection_time + avg_tracking_time:.1f}ms')
+    print(f'Log file saved to: {log_file}')
     
     # リソースの解放
     cap.release()
     writer.release()
     cv2.destroyAllWindows()
-    
-    print(f'\nトラッキング完了: {output_path}')
-    print(f'処理時間: {elapsed_time:.1f}秒')
-    print(f'総フレーム数: {frame_count}')
-    print(f'平均FPS: {frame_count / elapsed_time:.1f}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
