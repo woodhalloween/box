@@ -187,25 +187,40 @@ class StickFigureDetector:
         if len(x_movements) < self.consecutive_frames:
             return False
         
-        # 首振り検出ロジック
-        # 1. 十分な大きさの動きが連続して発生しているか
-        recent_movements = x_movements[-self.consecutive_frames:]
+        # 首振り検出ロジック - 改良版
+        # 1. 移動方向の変化を検出
+        recent_movements = x_movements[-self.consecutive_frames-2:]
+        direction_changes = 0
+        prev_direction = None
+        
+        for movement in recent_movements:
+            # 十分な大きさの動きのみを考慮
+            if abs(movement) > self.movement_threshold * 0.8:
+                current_direction = 1 if movement > 0 else -1
+                
+                if prev_direction is not None and current_direction != prev_direction:
+                    direction_changes += 1
+                
+                prev_direction = current_direction
+        
+        # 2. 有意な動きの数をカウント
         significant_movements = sum(1 for m in recent_movements if abs(m) > self.movement_threshold)
         
-        # 2. 最大移動量
+        # 3. 最大移動量
         max_movement = max(abs(m) for m in recent_movements) if recent_movements else 0
         
         # 動きカウントを更新
-        if significant_movements >= 1 or max_movement > self.movement_threshold * 1.5:
+        if (significant_movements >= 2 and direction_changes >= 1) or max_movement > self.movement_threshold * 2:
             self.current_movement_count += 1
         else:
-            # 動きがなければカウントをリセット
-            self.current_movement_count = max(0, self.current_movement_count - 0.5)
+            # 動きがなければカウントをリセット（ただしある程度維持）
+            self.current_movement_count = max(0, self.current_movement_count - 0.3)
         
         # 条件: 連続した有意な動きがある場合に検出
         if self.current_movement_count >= self.consecutive_frames:
             self.last_detection_time = current_time
-            self.current_movement_count = 0  # 検出後はカウントをリセット
+            # 検出後はカウントを0にせず、少し残して次の検出の継続性を保つ
+            self.current_movement_count = self.consecutive_frames / 2
             return True
         
         return False
@@ -231,9 +246,14 @@ class StickFigureDetector:
             head_turning = True
             self.turning_start_time = timestamp
             event_started = True
-        
-        # 首振り終了
+        # 首振り中の場合、検出がなくても一定時間（0.2秒）はアクティブに保つ
         elif not turning_detected and self.is_turning:
+            # 最後の検出から0.2秒以内なら首振り状態を維持
+            if timestamp - self.last_detection_time < 0.2:
+                head_turning = True
+                return head_turning, False, False, 0
+                
+            # それ以外は首振り終了
             self.is_turning = False
             head_turning = False
             event_duration = timestamp - self.turning_start_time
