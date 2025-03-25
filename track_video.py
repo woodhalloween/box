@@ -5,6 +5,8 @@ import time
 import argparse
 import numpy as np
 import csv
+import platform
+import psutil
 from pathlib import Path
 from datetime import datetime
 
@@ -17,12 +19,33 @@ from boxmot.trackers.deepocsort.deepocsort import DeepOcSort
 from boxmot.trackers.boosttrack.boosttrack import BoostTrack
 from boxmot.utils import ROOT, WEIGHTS
 
+def get_system_info():
+    """システム情報を取得する関数"""
+    info = {
+        'os': platform.system(),
+        'os_version': platform.version(),
+        'python_version': platform.python_version(),
+        'cpu': platform.processor(),
+        'cpu_cores': psutil.cpu_count(logical=False),
+        'cpu_threads': psutil.cpu_count(logical=True),
+        'ram_total': round(psutil.virtual_memory().total / (1024**3), 2),  # GB単位
+    }
+    return info
+
 def main(args):
     # 動画パス
     video_path = args.source
     
     # 検出モデルの設定
     model = YOLO(args.yolo_model)
+    
+    # モデル情報の取得
+    model_info = {
+        'name': Path(args.yolo_model).stem,
+        'file_size_mb': round(os.path.getsize(args.yolo_model) / (1024**2), 2) if os.path.exists(args.yolo_model) else None,
+        'task': model.task if hasattr(model, 'task') else 'unknown',
+        'version': getattr(model, 'version', 'unknown') if hasattr(model, 'version') else 'unknown',
+    }
     
     # トラッカーの設定
     if args.tracker == 'strongsort':
@@ -73,20 +96,46 @@ def main(args):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # 出力ビデオライターの設定
     output_path = f'tracked_{Path(video_path).stem}_{args.tracker}.mp4'
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
+    # システム情報の取得
+    system_info = get_system_info()
+    
     # ログファイルの設定
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f'log_{Path(video_path).stem}_{args.tracker}_{timestamp}.csv'
+    log_file = f'log_{Path(video_path).stem}_{args.tracker}_{Path(args.yolo_model).stem}_{timestamp}.csv'
     with open(log_file, 'w', newline='') as csvfile:
         log_writer = csv.writer(csvfile)
+        
+        # システム情報のヘッダー行
+        log_writer.writerow(['# System Information'])
+        log_writer.writerow(['# OS', system_info['os'], system_info['os_version']])
+        log_writer.writerow(['# Python', system_info['python_version']])
+        log_writer.writerow(['# CPU', system_info['cpu'], f'{system_info["cpu_cores"]} cores, {system_info["cpu_threads"]} threads'])
+        log_writer.writerow(['# RAM', f'{system_info["ram_total"]} GB'])
+        log_writer.writerow([])
+        
+        # モデル情報のヘッダー行
+        log_writer.writerow(['# YOLO Model', args.yolo_model, 'Size', f'{model_info["file_size_mb"]} MB'])
+        log_writer.writerow(['# Model Task', model_info['task'], 'Version', model_info['version']])
+        log_writer.writerow(['# Tracker', args.tracker])
+        log_writer.writerow(['# Device', args.device if args.device else 'auto', 'Half Precision', str(args.half), 'Confidence Threshold', str(args.conf)])
+        log_writer.writerow([])
+        
+        # 動画情報
+        log_writer.writerow(['# Video', video_path])
+        log_writer.writerow(['# Resolution', f'{width}x{height}', 'FPS', fps, 'Total Frames', total_frames])
+        log_writer.writerow([])
+        
+        # データ列のヘッダー行
         log_writer.writerow(['Frame', 'Time', 'Detection_Time_ms', 'Tracking_Time_ms', 'Total_Time_ms', 
                            'Objects_Detected', 'Objects_Tracked', 'FPS', 'YOLO_Preprocess_ms', 
-                           'YOLO_Inference_ms', 'YOLO_Postprocess_ms', 'CUDA_Used', 'Notes'])
+                           'YOLO_Inference_ms', 'YOLO_Postprocess_ms', 'CUDA_Used', 'Model', 'Tracker', 'Notes'])
         
         frame_count = 0
         start_time = time.time()
@@ -174,6 +223,8 @@ def main(args):
                 f'{yolo_inference:.1f}',                      # YOLO推論時間
                 f'{yolo_postprocess:.1f}',                    # YOLO後処理時間
                 'No' if args.device == 'cpu' else 'Yes',      # CUDAの使用
+                Path(args.yolo_model).stem,                   # モデル名
+                args.tracker,                                 # トラッカー名
                 ''                                            # メモ欄
             ])
             
