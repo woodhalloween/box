@@ -225,6 +225,7 @@ def main(input_file: str, output_file: str,
         
     pose_csv_file, pose_columns = initialize_csv(enable_csv_output)
     perf_log_file = None
+    perf_log_f = None
     perf_log_writer = None
 
     if enable_perf_log:
@@ -235,8 +236,9 @@ def main(input_file: str, output_file: str,
                         'Objects_Detected', 'Objects_Tracked', 'FPS', 'YOLO_Preprocess_ms',
                         'YOLO_Inference_ms', 'YOLO_Postprocess_ms', 'CUDA_Used', 'Model', 'Tracker', 'Notes']
 
-        with open(perf_log_file, 'w', newline='') as f:
-            perf_log_writer = csv.writer(f)
+        try:
+            perf_log_f = open(perf_log_file, 'w', newline='')
+            perf_log_writer = csv.writer(perf_log_f)
             perf_log_writer.writerow(['# System Information'])
             perf_log_writer.writerow(['# OS', system_info['os'], system_info['os_version']])
             perf_log_writer.writerow(['# Python', system_info['python_version']])
@@ -251,7 +253,13 @@ def main(input_file: str, output_file: str,
             perf_log_writer.writerow(['# Resolution', f'{width}x{height}', 'FPS', fps])
             perf_log_writer.writerow([])
             perf_log_writer.writerow(perf_columns)
-        print(f"パフォーマンスログ: 有効 ({perf_log_file})")
+            print(f"パフォーマンスログ: 有効 ({perf_log_file})")
+        except IOError as e:
+            print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
+            enable_perf_log = False
+            perf_log_file = None
+            perf_log_f = None
+            perf_log_writer = None
     else:
         print("パフォーマンスログ: 無効")
 
@@ -278,7 +286,7 @@ def main(input_file: str, output_file: str,
                 skip_frame -= 1
                 # スキップフレームは単にコピーする
                 out.write(frame_bgr)
-                if enable_perf_log:
+                if enable_perf_log and perf_log_writer:
                     elapsed_loop_time = time.time() - loop_start_time
                     current_overall_fps = frame_idx / elapsed_loop_time if elapsed_loop_time > 0 else 0
                     cuda_used_str = 'Yes' if device and device != 'cpu' else 'No'
@@ -286,7 +294,9 @@ def main(input_file: str, output_file: str,
                         frame_idx, f'{elapsed_loop_time:.3f}', '0.0', '0.0', '0.0',
                         0, 0, f'{current_overall_fps:.1f}',
                         '0.0', '0.0', '0.0',
-                        cuda_used_str, model.name, 'deepsort' if enable_tracking else 'None', 'Skipped Frame'
+                        cuda_used_str,
+                        Path(model_path).stem,
+                        'deepsort' if enable_tracking else 'None', 'Skipped Frame'
                     ])
                 continue
                 
@@ -308,7 +318,7 @@ def main(input_file: str, output_file: str,
             if enable_tracking and frame_idx % 60 == 0:
                 skip_frame = 2  # 2フレームスキップ
             
-            if enable_perf_log:
+            if enable_perf_log and perf_log_writer:
                 frame_end_time = time.time()
                 total_frame_time_ms = (frame_end_time - frame_start_time) * 1000
                 elapsed_loop_time = time.time() - loop_start_time
@@ -328,7 +338,7 @@ def main(input_file: str, output_file: str,
                     f'{yolo_inference:.1f}',
                     f'{yolo_postprocess:.1f}',
                     cuda_used_str,
-                    model.name,
+                    Path(model_path).stem,
                     'deepsort' if enable_tracking else 'None',
                     ''
                 ])
@@ -358,6 +368,7 @@ def main(input_file: str, output_file: str,
         print("\n処理が中断されました")
     finally:
         # 処理の完了
+        print("\nリソース解放中...")
         cap.release()
         out.release()
         if enable_video_display:
@@ -382,6 +393,9 @@ def main(input_file: str, output_file: str,
             print(f"ポーズCSV: {pose_csv_file}")
         if enable_perf_log:
             print(f"パフォーマンスログ: {perf_log_file}")
+            if perf_log_f:
+                print(f"パフォーマンスログファイル '{perf_log_file}' を閉じています。")
+                perf_log_f.close()
 
 
 if __name__ == '__main__':
@@ -392,7 +406,7 @@ if __name__ == '__main__':
     parser.add_argument("--enable-perf-log", action='store_true', help="パフォーマンスログをCSVに出力")
     parser.add_argument("--device", type=str, default='', help="使用するデバイス (例: cpu, 0)")
     parser.add_argument("--enable-video-display", action='store_true', help="処理中のプレビューを表示")
-    parser.add_argument("--model", default="yolov8n-pose.pt", help="YOLOモデルのパス (デフォルト: yolov8n-pose.pt)")
+    parser.add_argument("--model", default="yolov11n-pose.pt", help="YOLOモデルのパス (デフォルト: yolov11n-pose.pt)")
     parser.add_argument("--disable-tracking", action='store_true', help="DeepSORTトラッキングを無効化(処理速度向上)")
     args = parser.parse_args()
     
