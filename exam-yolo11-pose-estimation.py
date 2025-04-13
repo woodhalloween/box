@@ -177,6 +177,14 @@ def main(input_file: str, output_file: str,
         enable_perf_log: パフォーマンスログをCSVに出力するかどうか
         device: 使用するデバイス (例: cpu, 0)
     """
+    # モデルファイルの存在確認
+    if not os.path.exists(model_path):
+        print(f"エラー: モデルファイル '{model_path}' が見つかりません。")
+        print(f"現在の作業ディレクトリ: {os.getcwd()}")
+        print(f"絶対パスでの指定が必要かもしれません。")
+        print(f"例: python exam-yolo11-pose-estimation.py --input-mp4 [入力ファイル] --output-mp4 [出力ファイル] --model [モデルへの絶対パス]")
+        exit()
+
     # Read input file
     cap = cv2.VideoCapture(input_file)
     if not cap.isOpened():

@@ -60,6 +60,9 @@ class StickFigureDetector:
         # ログデータ
         self.log_data = []
         
+        # 骨格データのログを追加
+        self.skeleton_log_data = []
+        
     def detect_pose(self, frame, frame_idx=0, display=True):
         """
         フレームから骨格を検出し、頭部位置を特定
@@ -84,6 +87,22 @@ class StickFigureDetector:
         
         if results.pose_landmarks:
             landmarks = results.pose_landmarks
+            
+            # 骨格データの記録
+            skeleton_data = {
+                'timestamp': time.time(),
+                'frame_idx': frame_idx,
+                'processing_time': processing_time
+            }
+            
+            # 各ランドマークの座標を記録
+            for idx, landmark in enumerate(landmarks.landmark):
+                skeleton_data[f'landmark_{idx}_x'] = landmark.x
+                skeleton_data[f'landmark_{idx}_y'] = landmark.y
+                skeleton_data[f'landmark_{idx}_z'] = landmark.z
+                skeleton_data[f'landmark_{idx}_visibility'] = landmark.visibility
+            
+            self.skeleton_log_data.append(skeleton_data)
             
             # 頭部位置の取得（鼻のランドマークを使用）
             nose = results.pose_landmarks.landmark[self.mp_pose.PoseLandmark.NOSE]
@@ -282,6 +301,19 @@ class StickFigureDetector:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         df.to_csv(filename, index=False)
         
+    def save_skeleton_logs(self, filename):
+        """
+        骨格データのログをCSVファイルに保存
+        Args:
+            filename: 保存するCSVファイルのパス
+        """
+        if not self.skeleton_log_data:
+            return
+            
+        df = pd.DataFrame(self.skeleton_log_data)
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        df.to_csv(filename, index=False)
+        
     def release(self):
         """リソースを解放"""
         self.pose.close()
@@ -412,6 +444,10 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
         events_df = pd.DataFrame(turning_events)
         events_log_filename = os.path.join(log_dir, f"stick_figure_events_{time.strftime('%Y%m%d_%H%M%S')}.csv")
         events_df.to_csv(events_log_filename, index=False)
+    
+    # 骨格データのログも保存
+    skeleton_log_filename = os.path.join(log_dir, f"skeleton_data_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    detector.save_skeleton_logs(skeleton_log_filename)
     
     return detector.log_data
 
