@@ -1,0 +1,31 @@
+# stick_figure_detector_implementation.yaml (実装YAML)
+implementation_details:
+  concrete_definition: stick_figure_detector_concrete.yaml # 参照する具体定義ファイル
+  files:
+    - path: head_detection/stick_figure_detector.py # 実装ファイルパス
+      key_components: # 主要なクラスや関数
+        - class: StickFigureDetector # 抽象YAMLのPoseDetectorとHeadTurningAnalyzerに相当
+          methods: # 主要なメソッド
+            - __init__ # 初期化
+            - detect_pose: # このメソッドに機能追加あり
+                description: 姿勢検出、頭部位置計算、可視化を実行
+                updated_actions: # 追加/変更される機能
+                  - calculate_bounding_box: 全ランドマークからバウンディングボックスを計算
+                  - draw_bounding_box: 計算したバウンディングボックスを描画
+                  - calculate_keypoint_diffs: 特定キーポイント間の差分を計算（例：両耳のX座標差、鼻と肩のY座標差）
+                  - draw_keypoint_diffs: 計算したキーポイント差分をテキストで表示
+            - _detect_head_turning # 首振り検出ロジック
+            - _update_turning_state # 首振り状態更新ロジック
+            - save_logs # 検出ログ保存 (Loggerアクションに相当)
+            - save_skeleton_logs # 骨格ログ保存 (Loggerアクションに相当)
+            - release # リソース解放
+        - function: process_video # メインループとコンポーネント連携を管理
+          maps_to_steps: ["初期化", "フレーム処理ループ", "終了処理"] # 担当する抽象ステップ
+  dependencies: # 外部ライブラリ依存関係
+    - opencv-python
+    - numpy
+    - pandas
+    - mediapipe
+  execution_entrypoint: # スクリプトの実行方法
+    file: head_detection/stick_figure_detector.py # 実行ファイル
+    condition: __name__ == "__main__" # 実行条件 

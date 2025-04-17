@@ -1,0 +1,19 @@
+# stick_figure_detector_concrete.yaml (具体YAML)
+pipeline_instance:
+  name: HeadTurningAnalysis_WIN_Video_Default # この実行インスタンスの名前
+  abstract_definition: stick_figure_detector_abstract.yaml # 参照する抽象定義ファイル
+  concrete_parameters: # 抽象定義の変数に対する具体的な値
+    MODEL_COMPLEXITY: 1
+    DETECTION_CONFIDENCE: 0.5
+    TRACKING_CONFIDENCE: 0.5
+    MOVEMENT_THRESHOLD_RATIO: 0.05
+    CONSECUTIVE_FRAMES: 3
+    DETECTION_COOLDOWN: 2.0
+    HISTORY_SIZE: 40
+    MIN_EVENT_DURATION: 0.5
+    INPUT_VIDEO_PATH: "WIN_20250319_10_03_53_Pro.mp4" # スクリプトで使用された実際の入力ファイル
+    OUTPUT_VIDEO_PATH: "data/output/stick_figure_detection.mp4" # 実際の出力ファイル
+    LOG_DIRECTORY: "logs" # 実際のログディレクトリ
+  options: # パイプラインの動作オプション
+    enable_video_writer: True # ビデオ書き込み有効 (output_path指定に対応)
+    enable_preview: True # プレビュー表示有効 (show_preview=Trueに対応) 

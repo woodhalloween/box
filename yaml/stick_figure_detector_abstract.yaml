@@ -1,0 +1,89 @@
+# stick_figure_detector_abstract.yaml (抽象化YAML)
+pipeline:
+  name: 棒人間検出パイプライン
+  description: ビデオ内の棒人間（骨格）を検出し、首振り動作を分析します。
+  steps:
+    - name: 初期化
+      description: リソースとパラメータを初期化します。
+      components:
+        - type: 姿勢検出器 (PoseDetector)
+          parameters:
+            model_complexity: "{MODEL_COMPLEXITY}" # モデルの複雑度 (例: 0=Lite, 1=Full, 2=Heavy)
+            min_detection_confidence: "{DETECTION_CONFIDENCE}" # 最小検出信頼度
+            min_tracking_confidence: "{TRACKING_CONFIDENCE}" # 最小追跡信頼度
+            smooth_landmarks: True # ランドマークを平滑化するか
+        - type: 首振り分析器 (HeadTurningAnalyzer)
+          parameters:
+            movement_threshold_ratio: "{MOVEMENT_THRESHOLD_RATIO}" # 移動量閾値（フレーム幅に対する比率）
+            consecutive_frames_threshold: "{CONSECUTIVE_FRAMES}" # 連続フレーム数閾値
+            detection_cooldown_seconds: "{DETECTION_COOLDOWN}" # 検出クールダウン時間（秒）
+            history_size_frames: "{HISTORY_SIZE}" # 履歴サイズ（フレーム数）
+            min_event_duration_seconds: "{MIN_EVENT_DURATION}" # 最小イベント持続時間（秒）
+        - type: ビデオリーダー (VideoReader)
+          source: "{INPUT_VIDEO_PATH}" # 入力ビデオパス
+        - type: ビデオライター (VideoWriter) (オプション)
+          destination: "{OUTPUT_VIDEO_PATH}" # 出力ビデオパス
+          codec: "mp4v" # コーデック
+        - type: ロガー (Logger)
+          log_directory: "{LOG_DIRECTORY}" # ログディレクトリ
+          log_types: ["detection", "skeleton", "events"] # ログ種別（検出、骨格、イベント）
+
+    - name: フレーム処理ループ
+      description: 入力ビデオの各フレームを処理します。
+      loop_condition: ビデオにフレームが存在する限り
+      actions:
+        - component: 姿勢検出器 (PoseDetector)
+          action: detect_pose # 姿勢検出実行
+          input: video_frame # 入力：ビデオフレーム
+          outputs: [pose_landmarks, head_detected] # 出力：姿勢ランドマーク, 頭部検出フラグ
+        - component: 首振り分析器 (HeadTurningAnalyzer)
+          action: analyze_head_position # 頭部位置分析
+          input: [pose_landmarks, frame_dimensions, timestamp] # 入力：ランドマーク, フレーム寸法, タイムスタンプ
+          outputs: [head_turning_signal] # 出力：首振り信号
+        - component: 首振り分析器 (HeadTurningAnalyzer)
+          action: update_turning_event # 首振りイベント更新
+          input: [head_turning_signal, timestamp] # 入力：首振り信号, タイムスタンプ
+          outputs: [is_head_turning, event_start, event_end, event_duration] # 出力：首振り中フラグ, イベント開始/終了/持続時間
+        - component: ロガー (Logger)
+          action: log_data # データ記録
+          input: [timestamp, frame_index, processing_time, pose_landmarks, head_position, head_turning_signal, event_data] # 入力：各種データ
+        - component: 可視化ツール (Visualizer) (オプション)
+          action: draw_overlays # オーバーレイ描画
+          input: [video_frame, pose_landmarks, head_trajectory, head_turning_signal, processing_stats] # 入力：フレーム、ランドマーク、軌跡など
+          outputs: [annotated_frame] # 出力：注釈付きフレーム
+        - component: ビデオライター (VideoWriter) (オプション)
+          action: write_frame # フレーム書き込み
+          input: annotated_frame # 入力：注釈付きフレーム
+        - component: プレビューア (Previewer) (オプション)
+          action: show_frame # フレーム表示
+          input: annotated_frame # 入力：注釈付きフレーム
+
+    - name: 終了処理
+      description: リソースを解放し、最終ログ/レポートを保存します。
+      actions:
+        - component: ビデオリーダー (VideoReader)
+          action: release # 解放
+        - component: ビデオライター (VideoWriter) (オプション)
+          action: release # 解放
+        - component: 姿勢検出器 (PoseDetector)
+          action: release # 解放
+        - component: プレビューア (Previewer) (オプション)
+          action: close_windows # ウィンドウを閉じる
+        - component: ロガー (Logger)
+          action: save_all_logs # 全ログ保存
+        - component: レポーター (Reporter)
+          action: print_summary # サマリー表示
+          input: [total_frames, processing_stats, turning_events] # 入力：フレーム数、処理統計、イベント情報
+
+variables: # パイプライン全体で使用される変数
+  MODEL_COMPLEXITY: 1 # デフォルト値: モデル複雑度
+  DETECTION_CONFIDENCE: 0.5 # デフォルト値: 検出信頼度
+  TRACKING_CONFIDENCE: 0.5 # デフォルト値: 追跡信頼度
+  MOVEMENT_THRESHOLD_RATIO: 0.05 # デフォルト値: 移動量閾値比率
+  CONSECUTIVE_FRAMES: 3 # デフォルト値: 連続フレーム数
+  DETECTION_COOLDOWN: 2.0 # デフォルト値: 検出クールダウン
+  HISTORY_SIZE: 40 # デフォルト値: 履歴サイズ
+  MIN_EVENT_DURATION: 0.5 # デフォルト値: 最小イベント持続時間
+  INPUT_VIDEO_PATH: "path/to/input/video.mp4" # 入力ビデオパス
+  OUTPUT_VIDEO_PATH: "path/to/output/video.mp4" # 出力ビデオパス
+  LOG_DIRECTORY: "path/to/logs" # ログディレクトリ 
