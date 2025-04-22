@@ -1,0 +1,144 @@
+# directory_structure_changes.yaml
+# ディレクトリ構造の変更履歴
+
+changes:
+  - commit_id: "266c86a"
+    description: "ディレクトリ構造を整理して見通しを良くしました"
+    date: "2024-07-03"
+    author: "woodhalloween"
+    changes:
+      - action: "create_directory"
+        targets:
+          - "config/"      # 設定ファイル用ディレクトリ
+          - "data/raw/"    # 入力データ用ディレクトリ
+          - "models/"      # モデルファイル用ディレクトリ
+          - "output/analysis/" # 分析結果用ディレクトリ
+          - "output/frames/" # フレーム画像用ディレクトリ
+          - "output/logs/"  # 処理済みログ用ディレクトリ
+          - "output/videos/" # 処理済みビデオ用ディレクトリ
+          - "scripts/"     # 実行スクリプト用ディレクトリ
+      
+      - action: "reorganize"
+        details:
+          - from: "*.py"
+            to: "scripts/"
+            description: "すべての実行スクリプトをscriptsディレクトリに移動"
+          
+          - from: "*.pt"
+            to: "models/"
+            description: "学習済みモデルファイルをmodelsディレクトリに移動"
+          
+          - from: "head_detection/, head_pose/, tracking/"
+            to: "src/"
+            description: "コアコード関連ディレクトリをsrcディレクトリに移動"
+          
+          - from: "WIN_*.mp4, line_fortuna_demo_multipersons.mp4, folder/*.mp4"
+            to: "data/raw/"
+            description: "入力ビデオファイルをdata/rawに移動"
+          
+          - from: "tracked_*.mp4"
+            to: "output/videos/"
+            description: "処理済みビデオファイルをoutput/videosに移動"
+          
+          - from: "log_*.csv, pose_output_*.csv"
+            to: "output/logs/"
+            description: "ログファイルをoutput/logsに移動"
+          
+          - from: "frames/*.jpg"
+            to: "output/frames/"
+            description: "フレーム画像をoutput/framesに移動"
+          
+          - from: "analysis/*.py"
+            to: "scripts/"
+            description: "分析スクリプトをscriptsディレクトリに移動"
+          
+          - from: "analysis/*.csv, analysis/*.png"
+            to: "output/analysis/"
+            description: "分析結果ファイルをoutput/analysisに移動"
+          
+          - from: "yaml/"
+            to: "config/"
+            description: "YAML設定ファイルをconfigディレクトリに移動"
+      
+      - action: "remove"
+        targets:
+          - "frames/"
+          - "folder/"
+          - "weights/"
+          - "yaml/"
+          - "analysis/"
+        description: "空になったディレクトリを削除"
+
+  - commit_id: "c8ac492" 
+    description: "初回プッシュ: プロジェクト全体をGitHubにプッシュ"
+    date: "2024-07-03"
+    author: "woodhalloween"
+    changes:
+      - action: "add"
+        description: "リポジトリ初期化およびすべてのファイルを追加"
+        note: "大きなファイル(50MB超)が含まれており、GitHubから警告あり"
+
+project_structure:
+  current:
+    - "config/"           # 設定ファイル (YAMLなど)
+    - "data/"             # 入力データ
+      - "output/"         # 中間出力データ
+      - "raw/"            # 元の入力ビデオファイル
+      - "videos/"         # 処理済みビデオファイル
+    - "logs/"             # ログファイル
+    - "models/"           # 学習済みモデルファイル (.pt)
+    - "output/"           # 生成されたすべての出力ファイル
+      - "analysis/"       # 分析結果 (CSV, PNGなど)
+      - "all_landmarks/"  # ランドマーク画像
+      - "frames/"         # フレーム画像
+      - "logs/"           # 処理済みログ
+      - "videos/"         # 処理後のビデオファイル
+    - "scripts/"          # 実行可能なスクリプト (run_*.py, analyze_*.pyなど)
+    - "src/"              # プロジェクトのコアソースコード
+      - "head_detection/" # 頭部検出機能
+      - "head_pose/"      # 頭部姿勢推定機能
+      - "tracking/"       # 追跡アルゴリズム機能
+    - "-_-_-_-_-_-_-_-_-_-_-_-_-_-" # 区切り線
+    - ".venv/"            # Python仮想環境
+    - ".git/"             # Gitリポジトリ情報
+    - ".gitignore"        # Gitが無視するファイル設定
+    - "README.md"         # プロジェクト説明
+    - "pyproject.toml"    # プロジェクト設定
+    - "poetry.lock"       # 依存関係ロックファイル
+
+purpose:
+  - component: "data/raw/"
+    description: "処理対象となる元のビデオファイルを保存"
+  
+  - component: "models/"
+    description: "YOLOシリーズやその他の学習済みモデルファイルを保存"
+  
+  - component: "scripts/"
+    description: "ビデオ処理、追跡、分析などの実行スクリプトを保存"
+  
+  - component: "src/"
+    description: "モジュール化されたコアコードを保存"
+    subcomponents:
+      - component: "head_detection/"
+        description: "頭部検出と首振り検知のコア機能"
+      
+      - component: "head_pose/"
+        description: "頭部姿勢推定のコア機能"
+      
+      - component: "tracking/"
+        description: "物体追跡アルゴリズムの実装"
+  
+  - component: "output/"
+    description: "すべての処理結果を種類別に保存"
+    subcomponents:
+      - component: "videos/"
+        description: "処理後のビデオ出力（追跡結果など）"
+      
+      - component: "logs/"
+        description: "追跡、検出結果のCSVログ"
+      
+      - component: "analysis/"
+        description: "分析結果のCSV、グラフなど"
+      
+      - component: "frames/"
+        description: "抽出されたフレーム画像" 
