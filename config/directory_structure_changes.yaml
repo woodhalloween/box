@@ -2,6 +2,17 @@
 # ディレクトリ構造の変更履歴
 
 changes:
+  - commit_id: "668e047"
+    description: "ディレクトリ構造変更の履歴をYAMLとして追加"
+    date: "2024-07-03"
+    author: "woodhalloween"
+    changes:
+      - action: "add"
+        targets:
+          - "config/directory_structure_changes.yaml"
+        description: "プロジェクトのディレクトリ構造変更履歴を追跡するYAMLファイルを作成"
+        details: "変更履歴、現在の構造、各ディレクトリの目的を記録したドキュメント"
+
   - commit_id: "266c86a"
     description: "ディレクトリ構造を整理して見通しを良くしました"
     date: "2024-07-03"
@@ -79,6 +90,30 @@ changes:
         note: "大きなファイル(50MB超)が含まれており、GitHubから警告あり"
 
 project_structure:
+  # 変更前の構造 (初回プッシュ時)
+  before:
+    - "analysis/"                  # 分析スクリプトと結果
+    - "frames/"                    # ビデオから抽出されたフレーム画像
+    - "folder/"                    # 各種入力ビデオファイル
+    - "head_detection/"            # 頭部検出のコア機能
+    - "head_pose/"                 # 頭部姿勢推定のコア機能
+    - "logs/"                      # 検出ログデータ
+    - "output/"                    # 出力ファイル
+    - "src/"                       # ソースコード
+    - "tracking/"                  # 追跡機能のコード
+    - "weights/"                   # モデルの重みファイル (もしあれば)
+    - "yaml/"                      # 設定ファイル
+    - "*.py"                       # 多数のPythonスクリプトがルートに散在
+    - "*.pt"                       # YOLOモデルファイル (yolo11n.pt など)
+    - "WIN_*.mp4"                  # 入力ビデオファイル
+    - "tracked_*.mp4"              # 処理済みビデオファイル
+    - "log_*.csv"                  # 各種ログファイル
+    - "pose_output_*.csv"          # ポーズ検出結果
+    - ".venv/"                     # Python仮想環境
+    - ".git/"                      # Gitリポジトリ情報
+    - "README.md, pyproject.toml, poetry.lock" # プロジェクト設定ファイル
+
+  # 変更後の構造 (整理後)
   current:
     - "config/"           # 設定ファイル (YAMLなど)
     - "data/"             # 入力データ
@@ -98,13 +133,35 @@ project_structure:
       - "head_detection/" # 頭部検出機能
       - "head_pose/"      # 頭部姿勢推定機能
       - "tracking/"       # 追跡アルゴリズム機能
-    - "-_-_-_-_-_-_-_-_-_-_-_-_-_-" # 区切り線
     - ".venv/"            # Python仮想環境
     - ".git/"             # Gitリポジトリ情報
     - ".gitignore"        # Gitが無視するファイル設定
     - "README.md"         # プロジェクト説明
     - "pyproject.toml"    # プロジェクト設定
     - "poetry.lock"       # 依存関係ロックファイル
+
+# 構造変更の主な特徴
+transformation:
+  - category: "集約と階層化"
+    description: "散在していたファイルを機能ごとに集約し、論理的な階層構造にしました"
+    details:
+      - "ルートディレクトリに散在していた多数のPythonスクリプト(*.py)を全て scripts/ に集約"
+      - "各種入出力ファイルを明確に分離し、それぞれ適切なサブディレクトリに配置"
+      - "コア機能のコードを全て src/ 配下に集約して論理的に管理"
+  
+  - category: "機能的分離"
+    description: "ファイルを役割・機能に応じて異なるディレクトリに分離しました"
+    details:
+      - "入力データ(data/raw/)と出力データ(output/)を明確に分離"
+      - "実行スクリプト(scripts/)とコアロジック(src/)の分離"
+      - "設定ファイル(config/)とアプリケーションコードの分離"
+  
+  - category: "標準化"
+    description: "一般的なプロジェクト構造の標準的なパターンに沿った構造に変更"
+    details:
+      - "config/, src/, scripts/ などの標準的なディレクトリ名を採用"
+      - "トップレベルのファイル数を大幅に削減し、ディレクトリをシンプルに"
+      - "各ディレクトリの役割を明確化し、ファイルの探索を容易に"
 
 purpose:
   - component: "data/raw/"
