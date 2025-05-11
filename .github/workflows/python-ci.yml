@@ -1,0 +1,61 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    - name: Install dependencies
+      run: |
+        poetry install --with dev
+    - name: Lint with Ruff
+      run: |
+        poetry run ruff check .
+    - name: Format check with Ruff
+      run: |
+        poetry run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    - name: Install dependencies
+      run: |
+        poetry install --with dev
+    - name: Test with pytest
+      run: |
+        # テストディレクトリがない場合はスキップするようにメッセージを表示
+        if [ -d "tests" ]; then
+          poetry run pytest
+        else
+          echo "テストディレクトリが存在しません。テストはスキップされます。"
+          echo "テストを追加するには、'tests' ディレクトリを作成し、その中に 'test_*.py' ファイルを追加してください。"
+        fi 
