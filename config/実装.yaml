@@ -1,0 +1,92 @@
+# 実装計画書: ByteTrack版 detect_long_stay スクリプト
+version: "1.0"
+based_on: scripts/detect_long_stay.py
+target_file: scripts/detect_long_stay_bytetrack.py
+
+steps:
+  - id: create_copy
+    description: |
+      既存の `scripts/detect_long_stay.py` をベースに
+      `scripts/detect_long_stay_bytetrack.py` を新規作成。
+    action:
+      - copy: scripts/detect_long_stay.py → scripts/detect_long_stay_bytetrack.py
+
+  - id: imports
+    description: DeepSort→ByteTrack用にImportを差し替え
+    edits:
+      - remove: "from deep_sort_realtime.deepsort_tracker import DeepSort"
+      - add:    "from boxmot.trackers.bytetrack.bytetrack import ByteTrack"
+
+  - id: argparser_update
+    description: スクリプト引数定義からトラッカー指定をbytetrack固定に変更
+    edits:
+      - in: parser.add_argument("--enable-perf-log", …
+      - change:
+          old: parser.add_argument("--stay-threshold", …
+          new: |
+            parser.add_argument("--stay-threshold", type=float, default=6.0,
+                                help="滞在通知の閾値(秒)")
+            # ByteTrack固定／confをtrack_threshとして再利用
+            parser.add_argument("--conf", type=float, default=0.3,
+                                help="ByteTrackのtrack_thresh")
+
+  - id: tracker_initialization
+    description: ByteTrackの初期化パラメータに置き換え
+    edits:
+      - replace:
+          old: |
+            # Initialize DeepSORT tracker
+            tracker = DeepSort(max_age=30, n_init=3, nn_budget=100)
+          new: |
+            # Initialize ByteTrack tracker
+            tracker = ByteTrack(
+              track_thresh=args.conf,
+              track_buffer=30,
+              match_thresh=0.8
+            )
+
+  - id: process_frame_for_tracking_update
+    description: トラッキング呼び出しをByteTrack用に変更
+    edits:
+      - in_function: process_frame_for_tracking
+        replace:
+          old: |
+            tracks = tracker.update_tracks(formatted_detections, frame=frame_rgb)
+          new: |
+            # ByteTrackではupdateメソッドを使用
+            tracks = tracker.update(formatted_detections, frame=frame_rgb)
+
+  - id: perf_log_header_update
+    description: CSVヘッダーのTracker名を動的に「bytetrack」に変更
+    edits:
+      - replace:
+          old: perf_log_writer.writerow(['# Tracker', 'deepsort'])
+          new: perf_log_writer.writerow(['# Tracker', 'bytetrack'])
+
+  - id: readme_update
+    description: README.mdに新スクリプトの使用例を追加
+    action:
+      - append: |
+          ## long stay detection using ByteTrack
+          ```bash
+          python scripts/detect_long_stay_bytetrack.py \
+            --input-mp4 data/clips/sample.mp4 \
+            --output-mp4 output/sample_bytetrack.mp4 \
+            --conf 0.3 --stay-threshold 6.0 --move-threshold 20
+          ```
+
+  - id: test_execution
+    description: 動作確認とパフォーマンスログ出力を検証
+    commands:
+      - python scripts/detect_long_stay_bytetrack.py \
+          --input-mp4 data/clips/2025-05-03_152528フロア10minites_30sec.mp4 \
+          --output-mp4 output/bt_longstay.mp4 \
+          --conf 0.3 --stay-threshold 6.0 --move-threshold 20 \
+          --enable-perf-log
+
+  - id: cleanup_and_commit
+    description: 不要なDeepSort関連コードを削除し、コミット
+    actions:
+      - remove: DeepSortに関する関数・コメント
+      - git_add: scripts/detect_long_stay_bytetrack.py README.md
+      - git_commit: "feat: add detect_long_stay_bytetrack using ByteTrack"

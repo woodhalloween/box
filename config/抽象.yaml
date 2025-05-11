@@ -1,0 +1,146 @@
+# 抽象化YAML: detect_long_stay_${TRACKER}
+script:
+  name: detect_long_stay_${TRACKER}
+  description: |
+    YOLOによる人物検出＋${TRACKER}によるトラッキングを組み合わせ、
+    特定座標で長時間滞在を検知する汎用スクリプト設計
+
+parameters:
+  TRACKER:
+    description: 使用するトラッカーの種類
+    type: enum
+    choices: [deepsort, bytetrack]
+  MODEL_PATH:
+    description: YOLOモデルのファイルパス
+    type: string
+  INPUT_MP4:
+    description: 入力動画ファイルパス
+    type: string
+  OUTPUT_MP4:
+    description: 出力動画ファイルパス
+    type: string
+  CONF_THRESHOLD:
+    description: YOLO検出信頼度閾値／ByteTrackのtrack_thresh
+    type: float
+  STAY_THRESHOLD_SEC:
+    description: 滞在とみなす時間閾値（秒）
+    type: float
+  MOVE_THRESHOLD_PX:
+    description: 同一位置とみなす移動距離閾値（ピクセル）
+    type: float
+
+imports:
+  common:
+    - argparse
+    - csv
+    - datetime
+    - time
+    - os
+    - platform
+    - psutil
+    - pathlib.Path
+  image:
+    - cv2
+  detection:
+    - ultralytics.YOLO
+  tracker:
+    deepsort:
+      - deep_sort_realtime.deepsort_tracker.DeepSort
+    bytetrack:
+      - boxmot.trackers.bytetrack.ByteTrack
+
+initialization:
+  model:
+    call: YOLO
+    args:
+      - ${MODEL_PATH}
+  tracker:
+    deepsort:
+      call: DeepSort
+      args:
+        max_age: 30
+        n_init: 3
+        nn_budget: 100
+    bytetrack:
+      call: ByteTrack
+      args:
+        track_thresh: ${CONF_THRESHOLD}
+        match_thresh: 0.8
+        track_buffer: 30
+
+pipeline:
+  - open_video:
+      call: cv2.VideoCapture
+      args:
+        - ${INPUT_MP4}
+  - prepare_writer:
+      call: cv2.VideoWriter
+      args:
+        - ${OUTPUT_MP4}
+        - codec: avc1  # Mac互換H.264
+        - fps: video_fps
+        - size: [width, height]
+  - process_frames:  # フレーム単位処理
+      for_each_frame:
+        - to_rgb:
+            call: cv2.cvtColor
+            args:
+              - frame_bgr
+              - cv2.COLOR_BGR2RGB
+            output: frame_rgb
+        - detect:
+            call: model.predict
+            args:
+              - frame_rgb
+            output: results
+        - format_detections:
+            description: |
+              YOLO結果(results.boxes)→
+              [ [x1,y1,w,h], conf, cls ] の形式に変換
+        - track:
+            deepsort:
+              call: tracker.update_tracks
+              args:
+                - formatted_detections
+                - frame: frame_rgb
+              output: tracks
+            bytetrack:
+              call: tracker.update
+              args:
+                - formatted_detections
+                - frame: frame_bgr
+              output: tracks
+        - update_stay:
+            call: update_stay_times
+            args:
+              - tracks
+              - stay_info
+              - current_time
+              - ${MOVE_THRESHOLD_PX}
+              - ${STAY_THRESHOLD_SEC}
+            output:
+              - stay_info
+              - notifications
+        - draw:
+            call: draw_tracking_info
+            args:
+              - frame_bgr
+              - tracks
+              - stay_info
+        - write_frame:
+            call: writer.write
+            args:
+              - frame_bgr
+        - log_performance:
+            description: 各処理時間とトラッカー種別をCSVへ出力
+
+  - finalize:
+      - release_resources
+      - print_summary
+
+metrics:
+  - total_time
+  - avg_fps
+  - avg_detection_time
+  - avg_tracking_time
+  - avg_stay_check_time
