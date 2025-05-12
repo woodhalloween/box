@@ -3,11 +3,14 @@
 Usage:
     python analysis/create_landmark_video.py input.mp4 --output landmarks.mp4 --codec mp4v
 """
+
 import os  # 環境変数設定のため
+
 # C++側（glog）とTensorFlow/Mediapipeのログを抑制
-os.environ['GLOG_minloglevel'] = '2'    # INFO以下を隐藏
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # TensorFlowのINFO/WARNINGを抑制
+os.environ["GLOG_minloglevel"] = "2"  # INFO以下を隐藏
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # TensorFlowのINFO/WARNINGを抑制
 from absl import logging as absl_logging
+
 # abslロガーの事前警告を抑制し、ERROR以上のみ出力
 absl_logging._warn_preinit_stderr = False
 absl_logging.set_verbosity(absl_logging.ERROR)
@@ -15,11 +18,12 @@ import argparse
 import cv2
 import mediapipe as mp
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Create video with only stick figure landmarks')
-    parser.add_argument('input', help='Path to input video')
-    parser.add_argument('--output', required=True, help='Path to output video')
-    parser.add_argument('--codec', default='mp4v', help='FourCC codec, e.g. mp4v, XVID')
+    parser = argparse.ArgumentParser(description="Create video with only stick figure landmarks")
+    parser.add_argument("input", help="Path to input video")
+    parser.add_argument("--output", required=True, help="Path to output video")
+    parser.add_argument("--codec", default="mp4v", help="FourCC codec, e.g. mp4v, XVID")
     args = parser.parse_args()
 
     cap = cv2.VideoCapture(args.input)
@@ -35,11 +39,13 @@ def main():
     writer = cv2.VideoWriter(args.output, fourcc, fps, (width, height))
 
     mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(static_image_mode=False,
-                        model_complexity=1,
-                        smooth_landmarks=True,
-                        min_detection_confidence=0.5,
-                        min_tracking_confidence=0.5)
+    pose = mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=1,
+        smooth_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    )
     mp_drawing = mp.solutions.drawing_utils
     mp_styles = mp.solutions.drawing_styles
 
@@ -60,7 +66,8 @@ def main():
                     blank,
                     results.pose_landmarks,
                     mp_pose.POSE_CONNECTIONS,
-                    landmark_drawing_spec=mp_styles.get_default_pose_landmarks_style())
+                    landmark_drawing_spec=mp_styles.get_default_pose_landmarks_style(),
+                )
 
             writer.write(blank)
     finally:
@@ -68,5 +75,6 @@ def main():
         writer.release()
         pose.close()
 
-if __name__ == '__main__':
-    main() 
+
+if __name__ == "__main__":
+    main()

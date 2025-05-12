@@ -3,10 +3,12 @@
 """
 CSVを読み込み、各ランドマークのフレーム間移動距離を計算し、統計値および距離推移グラフを出力するスクリプト。
 """
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+
 
 def main():
     input_path = "output/landmark_metrics.csv"
@@ -21,7 +23,7 @@ def main():
 
     # 座標列を数値型に変換（文字列をfloatに）
     coord_cols = col_names[2:]
-    df[coord_cols] = df[coord_cols].apply(pd.to_numeric, errors='coerce')
+    df[coord_cols] = df[coord_cols].apply(pd.to_numeric, errors="coerce")
 
     # 各ランドマークのフレーム間移動距離を計算
     for i in range(n_landmarks):
@@ -50,7 +52,10 @@ def main():
     plt.savefig("analysis/landmark_distances.png")
     plt.close()
 
-    print("分析完了: analysis/summary_stats.csv と analysis/landmark_distances.png を出力しました。")
+    print(
+        "分析完了: analysis/summary_stats.csv と analysis/landmark_distances.png を出力しました。"
+    )
+
 
 if __name__ == "__main__":
-    main() 
+    main()

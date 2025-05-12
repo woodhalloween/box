@@ -8,6 +8,7 @@ Usage:
     python analysis/visualize_landmarks.py logs/skeleton_data_20250330_215959.csv \
         --vis_th 0.5 --output_prefix output/vis_result
 """
+
 import argparse
 import os
 from pathlib import Path
@@ -138,4 +139,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
