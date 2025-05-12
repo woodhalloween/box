@@ -6,13 +6,14 @@ Usage:
 
 import argparse
 from pathlib import Path
-import pandas as pd
+
 import matplotlib.pyplot as plt
 import mediapipe as mp
+import pandas as pd
 
 # Mediapipe PoseLandmarkの名前マッピング
 _landmark_enum = mp.solutions.pose.PoseLandmark
-_landmark_names = {l.value: l.name for l in _landmark_enum}
+_landmark_names = {landmark.value: landmark.name for landmark in _landmark_enum}
 
 
 def save_plot(fig, out_path: Path):

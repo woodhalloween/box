@@ -4,6 +4,7 @@ StrongSortクラスのパラメータを確認するスクリプト
 """
 
 import inspect
+
 from boxmot.trackers.strongsort.strongsort import StrongSort
 
 # StrongSortクラスのパラメータを取得

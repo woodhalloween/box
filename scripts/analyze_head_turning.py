@@ -1,7 +1,8 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # ログファイルのパス
 skeleton_file = "logs/skeleton_data_20250413_161655.csv"
@@ -69,7 +70,7 @@ def analyze_head_movement(event_id, window_size=5):
     event_skeleton = skeleton_data.iloc[start_idx : end_idx + 1].copy()
 
     # 頭部のX座標の変化を計算
-    nose_x = [f"landmark_{lm}_x" for lm in head_landmarks]
+    # nose_x = [f"landmark_{lm}_x" for lm in head_landmarks] # 未使用のためコメントアウトまたは削除
 
     # ランドマークのX座標を時系列で表示
     plt.figure(figsize=(12, 6))

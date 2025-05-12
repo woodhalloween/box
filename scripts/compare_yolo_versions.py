@@ -1,5 +1,6 @@
-from ultralytics import YOLO
 import inspect
+
+from ultralytics import YOLO
 
 # YOLOv8モデル
 try:

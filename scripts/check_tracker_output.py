@@ -1,9 +1,9 @@
 #!/usr/bin/env python
+
 import cv2
 import numpy as np
-from pathlib import Path
-from ultralytics import YOLO
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
+from ultralytics import YOLO
 
 # 動画ファイルをロード
 video_path = "line_fortuna_demo_multipersons.mp4"

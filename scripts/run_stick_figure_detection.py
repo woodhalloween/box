@@ -4,10 +4,11 @@
 MediaPipeを使用して人物の骨格を検出し、「首振り」（左右の動き）を検知する
 """
 
+import argparse
 import os
 import sys
-import argparse
 import time
+
 from head_detection.stick_figure_detector import StickFigureDetector, process_video
 
 
@@ -90,15 +91,15 @@ def main():
                 return 1
 
     # 処理開始メッセージ
-    print(f"棒人間検出と首振り検知を開始します...")
+    print("棒人間検出と首振り検知を開始します...")
     print(f"入力動画: {args.video}")
     if output_path:
         print(f"出力動画: {output_path} （保存します）")
     else:
-        print(f"動画の保存: 無効")
+        print("動画の保存: 無効")
     print(f"プレビュー: {'無効' if args.no_preview else '有効'}")
     print(f"ログディレクトリ: {args.log_dir}")
-    print(f"検出パラメータ:")
+    print("検出パラメータ:")
     print(f"  - 信頼度閾値: {args.confidence}")
     print(f"  - 移動量閾値: {args.movement_threshold}")
     print(f"  - 連続フレーム数: {args.consecutive_frames}")
@@ -130,17 +131,17 @@ def main():
         )
 
         # 動画処理の実行
-        log_data = process_video(
-            args.video,
-            output_path,
+        process_video(
+            video_path=args.video,
+            output_path=output_path,
             show_preview=not args.no_preview,
-            log_dir=args.log_dir,
-            detector=detector,
+            enable_log=True,
+            device=args.device,
         )
 
         # 処理時間の計算と表示
         total_time = time.time() - start_time
-        print(f"\n処理が完了しました！")
+        print("\n処理が完了しました！")
         print(f"総処理時間: {total_time:.2f}秒")
 
         return 0

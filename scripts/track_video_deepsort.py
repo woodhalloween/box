@@ -1,16 +1,14 @@
 #!/usr/bin/env python
-import os
-import cv2
-import time
 import argparse
-import numpy as np
 import csv
+import os
 import platform
-import psutil
-from pathlib import Path
+import time
 from datetime import datetime
+from pathlib import Path
 
-from ultralytics import YOLO
+import cv2
+import psutil
 
 # boxmot トラッカーのインポート (必要に応じて)
 # from boxmot.trackers.botsort.botsort import BotSort
@@ -21,12 +19,14 @@ from ultralytics import YOLO
 # from boxmot.trackers.boosttrack.boosttrack import BoostTrack
 # from boxmot.trackers.hybridsort.hybridsort import HybridSORT
 from deep_sort_realtime.deepsort_tracker import DeepSort
+from ultralytics import YOLO
+
 # from boxmot.utils import ROOT, WEIGHTS # BoxMOTを使わない場合は不要
 
 
 def get_system_info():
     """システム情報を取得する関数"""
-    info = {
+    return {
         "os": platform.system(),
         "os_version": platform.version(),
         "python_version": platform.python_version(),
@@ -35,7 +35,6 @@ def get_system_info():
         "cpu_threads": psutil.cpu_count(logical=True),
         "ram_total": round(psutil.virtual_memory().total / (1024**3), 2),  # GB単位
     }
-    return info
 
 
 def main(args):
@@ -70,7 +69,8 @@ def main(args):
     else:
         # このスクリプトはDeepSORT専用とするため、他のトラッカーはエラーとする
         raise ValueError(
-            f"このスクリプトはDeepSORT専用です。指定されたトラッカー {args.tracker} はサポートされていません。"
+            f"このスクリプトはDeepSORT専用です。 "
+            f"指定されたトラッカー {args.tracker} はサポートされていません。"
         )
 
     # 動画の読み込み
@@ -228,7 +228,8 @@ def main(args):
             # ログ出力（10フレームごと）
             if frame_count % 10 == 0 or frame_count == 1:
                 print(
-                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, Tracking time {tracking_time:.1f}ms"
+                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, "
+                    f"Tracking time {tracking_time:.1f}ms"
                 )
 
             # ログをCSVに記録
@@ -237,7 +238,8 @@ def main(args):
 
             # CSVに記録
             objects_tracked_count = len([t for t in tracks if t.is_confirmed()])
-            # DeepSORTオブジェクトから use_cuda 属性を確認することはできないため、args.deviceに基づいて判断
+            # DeepSORTオブジェクトから use_cuda 属性を確認することはできないため、
+            # args.deviceに基づいて判断
             cuda_used_str = "Yes" if args.device and args.device != "cpu" else "No"
             log_writer.writerow(
                 [

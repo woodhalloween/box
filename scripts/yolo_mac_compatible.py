@@ -4,10 +4,10 @@ Mac互換のYOLOポーズ推定スクリプト
 macOSで再生可能なMP4ファイルを出力します
 """
 
-import cv2
-import numpy as np
-import time
 import os
+import time
+
+import cv2
 from ultralytics import YOLO
 
 # YOLOポーズ推定の骨格ラインの定義

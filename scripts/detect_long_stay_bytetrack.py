@@ -12,7 +12,8 @@ import psutil
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from ultralytics import YOLO
 
-# Skeleton structure for YOLO keypoints visualization (kept for potential future use, but not primary focus)
+# Skeleton structure for YOLO keypoints visualization
+# (kept for potential future use, but not primary focus)
 SKELETON = [
     (0, 1),
     (1, 3),

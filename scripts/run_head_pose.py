@@ -4,11 +4,12 @@
 MediaPipeを使用して顔のランドマークから頭部姿勢（特に左右の動き）を検出し、「首振り」を検知する
 """
 
+import argparse
 import os
 import sys
-import argparse
 import time
-from head_pose.detector import process_video, HeadPoseDetector
+
+from head_pose.detector import HeadPoseDetector, process_video
 
 
 def main():
@@ -74,13 +75,13 @@ def main():
         output_path = args.output
 
     # 処理開始メッセージ
-    print(f"頭部姿勢検出を開始します...")
+    print("頭部姿勢検出を開始します...")
     print(f"入力動画: {args.video}")
     if output_path:
         print(f"出力動画: {output_path}")
     print(f"プレビュー: {'無効' if args.no_preview else '有効'}")
     print(f"ログディレクトリ: {args.log_dir}")
-    print(f"検出パラメータ:")
+    print("検出パラメータ:")
     print(f"  - 角度変化閾値: {args.yaw_threshold}度")
     print(f"  - 連続フレーム数: {args.consecutive_frames}フレーム")
     print(f"  - 履歴サイズ: {args.max_history}フレーム")
@@ -99,17 +100,17 @@ def main():
         )
 
         # 動画処理の実行（カスタム検出器を直接渡す）
-        log_data = process_video(
-            args.video,
-            output_path,
+        process_video(
+            video_path=args.video,
+            output_path=output_path,
+            detector=detector,  # mediapipe pose
             show_preview=not args.no_preview,
             log_dir=args.log_dir,
-            detector=detector,  # この引数はprocess_video関数で受け取れるように修正が必要
         )
 
         # 処理時間の計算と表示
         total_time = time.time() - start_time
-        print(f"\n処理が完了しました！")
+        print("\n処理が完了しました！")
         print(f"総処理時間: {total_time:.2f}秒")
 
         # 検出統計がすでにprocess_video内で表示されるため、ここでは省略

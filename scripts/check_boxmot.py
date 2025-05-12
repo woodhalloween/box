@@ -3,12 +3,10 @@
 boxmotのインポート可能なモジュールとクラスを確認するスクリプト
 """
 
-import os
-import pkgutil
 import importlib
+import pkgutil
 
 # boxmotパッケージのルートを取得
-import boxmot
 
 
 def explore_package(package_name, prefix=""):
@@ -24,7 +22,7 @@ def explore_package(package_name, prefix=""):
         return
 
     # モジュールを列挙
-    for loader, name, is_pkg in pkgutil.iter_modules(path):
+    for _loader, name, is_pkg in pkgutil.iter_modules(path):
         full_name = f"{package_name}.{name}"
 
         # モジュールをインポート

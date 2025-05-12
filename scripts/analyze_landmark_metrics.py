@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# coding: utf-8
 """
 CSVを読み込み、各ランドマークのフレーム間移動距離を計算し、統計値および距離推移グラフを出力するスクリプト。
 """
 
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 
 def main():

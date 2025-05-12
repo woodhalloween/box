@@ -1,14 +1,15 @@
 import argparse
 import csv
-from datetime import datetime
-import time
-import cv2
 import os
 import platform
-import psutil
+import time
+from datetime import datetime
 from pathlib import Path
-from ultralytics import YOLO
+
+import cv2
+import psutil
 from deep_sort_realtime.deepsort_tracker import DeepSort
+from ultralytics import YOLO
 
 # Skeleton structure for YOLO keypoints visualization
 SKELETON = [
@@ -36,7 +37,7 @@ SKELETON = [
 
 def get_system_info():
     """システム情報を取得する関数"""
-    info = {
+    return {
         "os": platform.system(),
         "os_version": platform.version(),
         "python_version": platform.python_version(),
@@ -45,7 +46,6 @@ def get_system_info():
         "cpu_threads": psutil.cpu_count(logical=True),
         "ram_total": round(psutil.virtual_memory().total / (1024**3), 2),  # GB単位
     }
-    return info
 
 
 def initialize_csv(enable_csv_output: bool):
@@ -88,7 +88,7 @@ def process_frame(frame_idx, frame_rgb, model, tracker=None, enable_tracking=Tru
     # Prepare detection data for DeepSORT
     formatted_detections = [
         ([x1, y1, x2 - x1, y2 - y1], float(conf), int(cls))
-        for (x1, y1, x2, y2), conf, cls in zip(detections, confidences, class_ids)
+        for (x1, y1, x2, y2), conf, cls in zip(detections, confidences, class_ids, strict=False)
     ]
 
     # Update tracker
@@ -232,9 +232,11 @@ def main(
     if not os.path.exists(model_path):
         print(f"エラー: モデルファイル '{model_path}' が見つかりません。")
         print(f"現在の作業ディレクトリ: {os.getcwd()}")
-        print(f"絶対パスでの指定が必要かもしれません。")
+        print("絶対パスでの指定が必要かもしれません。")
         print(
-            f"例: python exam-yolo11-pose-estimation.py --input-mp4 [入力ファイル] --output-mp4 [出力ファイル] --model [モデルへの絶対パス]"
+            "使用方法: python exam-yolo11-pose-estimation.py "
+            "--input-mp4 [入力ファイル] --output-mp4 [出力ファイル] "
+            "--model [モデルへの絶対パス]"
         )
         exit()
 
@@ -257,7 +259,7 @@ def main(
 
     # Video properties を出力
     print(f"ビデオ情報: {width}x{height} @ {fps}fps")
-    print(f"出力コーデック: H.264 (avc1) - Mac互換")
+    print("出力コーデック: H.264 (avc1) - Mac互換")
 
     # Initialize YOLO Pose model
     print(f"YOLOモデル: {model_path}")
@@ -317,41 +319,39 @@ def main(
         ]
 
         try:
-            perf_log_f = open(perf_log_file, "w", newline="")
-            perf_log_writer = csv.writer(perf_log_f)
-            perf_log_writer.writerow(["# System Information"])
-            perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
-            perf_log_writer.writerow(["# Python", system_info["python_version"]])
-            perf_log_writer.writerow(
-                [
-                    "# CPU",
-                    system_info["cpu"],
-                    f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
-                ]
-            )
-            perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(
-                [
-                    "# YOLO Model",
-                    model_path,
-                    "Task",
-                    model.task if hasattr(model, "task") else "pose",
-                ]
-            )
-            perf_log_writer.writerow(["# Tracker", "deepsort" if enable_tracking else "None"])
-            perf_log_writer.writerow(["# Device", device if device else "auto"])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(["# Video", input_file])
-            perf_log_writer.writerow(["# Resolution", f"{width}x{height}", "FPS", fps])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(perf_columns)
-            print(f"パフォーマンスログ: 有効 ({perf_log_file})")
-        except IOError as e:
-            print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
-            enable_perf_log = False
-            perf_log_file = None
-            perf_log_f = None
+            with open(perf_log_file, "w", newline="") as perf_log_f:
+                perf_log_writer = csv.writer(perf_log_f)
+                perf_log_writer.writerow(["# System Information"])
+                perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
+                perf_log_writer.writerow(["# Python", system_info["python_version"]])
+                perf_log_writer.writerow(
+                    [
+                        "# CPU",
+                        system_info["cpu"],
+                        f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
+                    ]
+                )
+                perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
+                perf_log_writer.writerow([])
+                perf_log_writer.writerow(
+                    [
+                        "# YOLO Model",
+                        model_path,
+                        "Task",
+                        model.task if hasattr(model, "task") else "pose",
+                    ]
+                )
+                perf_log_writer.writerow(["# Tracker", "deepsort" if enable_tracking else "None"])
+                perf_log_writer.writerow(["# Device", device if device else "auto"])
+                perf_log_writer.writerow([])
+                perf_log_writer.writerow(["# Video", input_file])
+                perf_log_writer.writerow(["# Resolution", f"{width}x{height}", "FPS", fps])
+                perf_log_writer.writerow([])
+                perf_log_writer.writerow(perf_columns)
+                print(f"パフォーマンスログ: 有効 ({perf_log_file})")
+        except OSError as e:
+            print(f"Error opening performance log file '{perf_log_file}': {e}")
+            enable_perf_log = False  # ログ記録を無効化
             perf_log_writer = None
     else:
         print("パフォーマンスログ: 無効")
@@ -434,9 +434,9 @@ def main(
             if enable_tracking and frame_idx % 60 == 0:
                 skip_frame = 2  # 2フレームスキップ
 
+            # Write performance log entry
             if enable_perf_log and perf_log_writer:
                 frame_end_time = time.time()
-                total_frame_time_ms = (frame_end_time - frame_start_time) * 1000
                 elapsed_loop_time = time.time() - loop_start_time
                 current_overall_fps = frame_idx / elapsed_loop_time if elapsed_loop_time > 0 else 0
                 cuda_used_str = "Yes" if device and device != "cpu" else "No"
@@ -510,7 +510,7 @@ def main(
             sum(tracking_times) / len(tracking_times) if tracking_times and enable_tracking else 0
         )
 
-        print(f"\n--- 処理結果サマリ ---")
+        print("\n--- 処理結果サマリ ---")
         print(f"合計処理時間: {total_time:.2f} 秒")
         print(f"処理フレーム数: {frame_idx}")
         print(f"平均処理速度 (FPS): {avg_fps:.2f}")

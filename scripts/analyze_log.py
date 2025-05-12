@@ -1,7 +1,7 @@
-import pandas as pd
-import numpy as np
 import glob
 import os
+
+import pandas as pd
 
 
 def analyze_log_file(file_path):
@@ -14,23 +14,30 @@ def analyze_log_file(file_path):
         # データが空かどうかを確認
         if df.empty:
             print(f"警告: ログファイル '{os.path.basename(file_path)}' にデータがありません。")
-            print(f"ヘッダーは存在しますが、実際のデータ行がありません。")
+            print("ヘッダーは存在しますが、実際のデータ行がありません。")
             print("\n" + "=" * 50)
             return
 
         # 必要なカラムが存在するかチェック
         required_columns = [
+            "Frame",
+            "Time",
             "Detection_Time_ms",
             "Tracking_Time_ms",
+            "Stay_Check_Time_ms",
             "Total_Time_ms",
-            "FPS",
             "Objects_Detected",
         ]
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            print(
-                f"警告: ログファイル '{os.path.basename(file_path)}' に以下のカラムがありません: {', '.join(missing_columns)}"
-            )
+        if set(required_columns).issubset(set(df.columns)):
+            # 必要なカラムがすべて存在する場合
+            pass
+        else:
+            missing_columns = list(set(required_columns) - set(df.columns))
+            if missing_columns:
+                # 警告メッセージを複数行に分割
+                base_name = os.path.basename(file_path)
+                columns_str = ", ".join(missing_columns)
+                print(f"警告: ログファイル '{base_name}' に以下のカラムがありません: {columns_str}")
             print("\n" + "=" * 50)
             return
 
@@ -82,7 +89,7 @@ def analyze_log_file(file_path):
             for stat, value in values.items():
                 print(f"{stat}: {value:.2f}")
 
-        print(f"\n=== 検出率 ===")
+        print("\n=== 検出率 ===")
         print(f"総フレーム数: {total_frames}")
         print(f"オブジェクト検出フレーム数: {frames_with_objects}")
         print(f"検出率: {detection_rate:.2f}%")

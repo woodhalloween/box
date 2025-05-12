@@ -1,28 +1,28 @@
 #!/usr/bin/env python
-import os
-import cv2
-import time
 import argparse
-import numpy as np
 import csv
+import os
 import platform
-import psutil
-from pathlib import Path
+import time
 from datetime import datetime
+from pathlib import Path
 
-from ultralytics import YOLO
+import cv2
+import numpy as np
+import psutil
+from boxmot.trackers.boosttrack.boosttrack import BoostTrack
 from boxmot.trackers.botsort.botsort import BotSort
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
+from boxmot.trackers.deepocsort.deepocsort import DeepOcSort
 from boxmot.trackers.ocsort.ocsort import OcSort
 from boxmot.trackers.strongsort.strongsort import StrongSort
-from boxmot.trackers.deepocsort.deepocsort import DeepOcSort
-from boxmot.trackers.boosttrack.boosttrack import BoostTrack
-from boxmot.utils import ROOT, WEIGHTS
+from boxmot.utils import WEIGHTS
+from ultralytics import YOLO
 
 
 def get_system_info():
     """システム情報を取得する関数"""
-    info = {
+    return {
         "os": platform.system(),
         "os_version": platform.version(),
         "python_version": platform.python_version(),
@@ -31,7 +31,6 @@ def get_system_info():
         "cpu_threads": psutil.cpu_count(logical=True),
         "ram_total": round(psutil.virtual_memory().total / (1024**3), 2),  # GB単位
     }
-    return info
 
 
 def main(args):
@@ -233,7 +232,8 @@ def main(args):
             # ログ出力（10フレームごと）
             if frame_count % 10 == 0 or frame_count == 1:
                 print(
-                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, Tracking time {tracking_time:.1f}ms"
+                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, "
+                    f"Tracking time {tracking_time:.1f}ms"
                 )
 
             # ログをCSVに記録
@@ -268,7 +268,8 @@ def main(args):
                 x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
 
                 # トラッキングIDとクラスラベルの表示
-                # クラスIDは6列目（インデックス5）にある場合が多いが、トラッカーによって異なる可能性がある
+                # クラスIDは6列目（インデックス5）にある場合が多いが、
+                # トラッカーによって異なる可能性がある
                 cls_id = 0  # デフォルトは人（クラス0）
                 if d.shape[0] > 6:
                     cls_id = int(d[6])

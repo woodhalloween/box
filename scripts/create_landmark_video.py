@@ -4,19 +4,21 @@ Usage:
     python analysis/create_landmark_video.py input.mp4 --output landmarks.mp4 --codec mp4v
 """
 
-import os  # 環境変数設定のため
+import argparse
+import os
+
+import cv2
+import mediapipe as mp
 
 # C++側（glog）とTensorFlow/Mediapipeのログを抑制
-os.environ["GLOG_minloglevel"] = "2"  # INFO以下を隐藏
+os.environ["GLOG_MINLOGLEVEL"] = "2"  # INFO以下を隐藏
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # TensorFlowのINFO/WARNINGを抑制
 from absl import logging as absl_logging
 
-# abslロガーの事前警告を抑制し、ERROR以上のみ出力
+# abslライブラリの標準エラー出力を無効化し、ログレベルをERRORに設定
+# これにより、MediapipeやTensorFlowが出力する大量のINFOレベルのログを抑制
 absl_logging._warn_preinit_stderr = False
 absl_logging.set_verbosity(absl_logging.ERROR)
-import argparse
-import cv2
-import mediapipe as mp
 
 
 def main():
@@ -28,7 +30,7 @@ def main():
 
     cap = cv2.VideoCapture(args.input)
     if not cap.isOpened():
-        raise IOError(f"Cannot open video {args.input}")
+        raise OSError(f"Cannot open video {args.input}")
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

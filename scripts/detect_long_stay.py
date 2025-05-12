@@ -11,7 +11,8 @@ import psutil
 from deep_sort_realtime.deepsort_tracker import DeepSort
 from ultralytics import YOLO
 
-# Skeleton structure for YOLO keypoints visualization (kept for potential future use, but not primary focus)
+# Skeleton structure for YOLO keypoints visualization
+# (kept for potential future use, but not primary focus)
 SKELETON = [
     (0, 1),
     (1, 3),

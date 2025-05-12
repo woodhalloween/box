@@ -10,9 +10,7 @@ Usage:
 """
 
 import argparse
-import os
 from pathlib import Path
-from typing import Tuple
 
 import matplotlib.pyplot as plt
 import pandas as pd

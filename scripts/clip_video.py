@@ -1,8 +1,8 @@
 import argparse
 import os
-from pathlib import Path
-import cv2
 import time
+
+import cv2
 
 
 def clip_video(input_path, output_path, start_time=0, duration=30):
@@ -63,17 +63,11 @@ def clip_video(input_path, output_path, start_time=0, duration=30):
         frame_count += 1
         current_time = start_time + (frame_count / fps)
         if frame_count % 10 == 0:
-            progress = (current_time - start_time) / actual_duration * 100
-            elapsed = time.time() - start_process_time
-            remaining = (
-                (actual_duration - (current_time - start_time))
-                / (current_time - start_time)
-                * elapsed
-                if current_time > start_time
-                else 0
-            )
+            progress = (frame_count / total_frames) * 100 if total_frames > 0 else 0
+            remaining = (total_frames - frame_count) / fps if fps > 0 else 0
             print(
-                f"進捗: {progress:.1f}% ({frame_count}フレーム, {current_time:.2f}秒) - 残り約{remaining:.1f}秒"
+                f"進捗: {progress:.1f}% ({frame_count}フレーム, {current_time:.2f}秒) - "
+                f"残り約{remaining:.1f}秒"
             )
 
     # リソースを解放
@@ -105,19 +99,19 @@ def main():
         not os.path.isabs(input_path)
         and not input_path.startswith("./")
         and not input_path.startswith("../")
+        and os.path.exists(f"data/raw/{input_path}")
     ):
-        if os.path.exists(f"data/raw/{input_path}"):
-            input_path = f"data/raw/{input_path}"
+        input_path = f"data/raw/{input_path}"
 
     output_path = args.output_video
     if (
         not os.path.isabs(output_path)
         and not output_path.startswith("./")
         and not output_path.startswith("../")
-    ):
         # 出力先ディレクトリを明示的に指定されていない場合、clips/ディレクトリに配置
-        if not os.path.dirname(output_path):
-            output_path = f"data/clips/{output_path}"
+        and not os.path.dirname(output_path)
+    ):
+        output_path = f"data/clips/{output_path}"
 
     print(f"入力ファイル: {input_path}")
     print(f"出力ファイル: {output_path}")

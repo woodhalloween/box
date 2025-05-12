@@ -4,6 +4,7 @@ BotSortクラスのパラメータを確認するスクリプト
 """
 
 import inspect
+
 from boxmot.trackers.botsort.botsort import BotSort
 
 # BotSortクラスのパラメータを取得
