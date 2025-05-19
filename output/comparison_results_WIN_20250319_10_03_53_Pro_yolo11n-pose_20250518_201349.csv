@@ -1,0 +1,13 @@
+# 解像度別YOLOv11+ByteTrack精度比較
+# 実行日時,2025-05-18 20:13:49
+# システム情報
+# OS,Darwin,Darwin Kernel Version 24.4.0: Fri Apr 11 18:34:14 PDT 2025; root:xnu-11417.101.15~117/RELEASE_ARM64_T8122
+# Python,3.11.5
+# CPU,arm,"8 cores, 8 threads"
+# RAM,24.0 GB
+
+# 入力動画,data/videos/WIN_20250319_10_03_53_Pro.mp4
+# YOLOモデル,weights/yolo11n-pose.pt
+# 解像度比較,"1920x1080, 960x540"
+
+解像度,フレーム数,平均検出時間(ms),平均追跡時間(ms),平均FPS,平均検出オブジェクト数,平均追跡オブジェクト数,最大検出オブジェクト数,最大追跡オブジェクト数,平均検出信頼度,平均メモリ使用量(MB)
