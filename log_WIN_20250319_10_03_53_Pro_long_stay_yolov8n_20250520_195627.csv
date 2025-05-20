@@ -1,0 +1,12 @@
+# System Information
+# OS,Darwin,Darwin Kernel Version 24.4.0: Fri Apr 11 18:34:14 PDT 2025; root:xnu-11417.101.15~117/RELEASE_ARM64_T8122
+# Python,3.11.5
+# CPU,arm,"8 cores, 8 threads"
+# RAM,24.0 GB
+
+# YOLO Model,models/yolov8n.pt
+# Tracker,bytetrack
+
+# Video,data/videos/WIN_20250319_10_03_53_Pro.mp4
+
+Frame,Time,Detection_Time_ms,Tracking_Time_ms,Stay_Check_Time_ms,Total_Time_ms,Objects_Detected,Objects_Tracked,FPS,Memory_MB,Model,Tracker,Notes

@@ -1,13 +1,19 @@
-import argparse
 import os
+import sys
+
+# スクリプトの親ディレクトリの親ディレクトリ (プロジェクトルート) をsys.pathに追加
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import argparse
 import time
+from datetime import datetime
 from pathlib import Path
 
 import cv2
 import psutil
 
 # 共通ユーティリティをインポート
-from bytetrack_utils import (
+from src.tracking.bytetrack_utils import (
     draw_tracking_info,
     initialize_bytetrack,
     initialize_perf_log,
@@ -248,98 +254,122 @@ def main(
 
             # パフォーマンスログ
             if perf_log_writer and frame_idx % max(1, int(fps)) == 0:  # 1秒に1回程度ログを取る
-                current_memory = psutil.Process(os.getpid()).memory_info().rss / (
-                    1024 * 1024
-                )  # MB単位
-                total_process_time = detection_time_ms + tracking_time_ms + stay_check_time_ms
-                try:
-                    perf_log_writer.writerow(
-                        [
-                            frame_idx,
-                            f"{(time.time() - start_time):.3f}",
-                            f"{detection_time_ms:.2f}",
-                            f"{tracking_time_ms:.2f}",
-                            f"{stay_check_time_ms:.2f}",
-                            f"{total_process_time:.2f}",
-                            num_detections,
-                            num_tracks,
-                            f"{avg_fps:.2f}",
-                            f"{current_memory:.1f}",
-                            Path(model_path).stem,
-                            "bytetrack",
-                            "",
-                        ]
-                    )
-                    perf_log_f.flush()  # 即時書き込み
-                except Exception as e:
-                    print(f"ログ書き込みエラー: {e}")
+                current_mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+                total_time_ms = detection_time_ms + tracking_time_ms + stay_check_time_ms
+                perf_log_writer.writerow(
+                    [
+                        frame_idx,
+                        datetime.now().strftime("%H:%M:%S.%f")[:-3],
+                        f"{detection_time_ms:.2f}",
+                        f"{tracking_time_ms:.2f}",
+                        f"{stay_check_time_ms:.2f}",
+                        f"{total_time_ms:.2f}",
+                        num_detections,
+                        num_tracks,
+                        f"{avg_fps:.2f}",
+                        f"{current_mem_usage:.2f}",
+                        Path(model_path).name,
+                        "bytetrack",
+                        f"Stay:{stay_threshold_sec}s Move:{move_threshold_px}px",
+                    ]
+                )
 
-            # 進捗表示（コンソール）
-            elapsed_time = time.time() - last_output_time
-            if elapsed_time > 5.0:  # 5秒ごとに進捗を表示
-                progress = frame_idx / frame_count * 100 if frame_count > 0 else 0
-                print(f"進捗: {frame_idx}/{frame_count} ({progress:.1f}%) FPS: {avg_fps:.1f}")
-                last_output_time = time.time()
+            # 進捗表示 (30フレームごと)
+            if frame_idx % 30 == 0:
+                elapsed_time = time.time() - start_time
+                processing_speed = frame_idx / elapsed_time if elapsed_time > 0 else 0
+                print(
+                    f"進捗: {frame_idx}/{frame_count} ({frame_idx / frame_count * 100:.1f}%) | "
+                    f"処理速度: {processing_speed:.2f} FPS | "
+                    f"現在時刻: {time.strftime('%H:%M:%S', time.localtime(current_time))}"
+                )
 
     except KeyboardInterrupt:
-        print("処理が中断されました")
-    except Exception as e:
-        print(f"エラーが発生しました: {e}")
+        print("\n処理がユーザーによって中断されました。")
     finally:
-        # 後処理
+        # 終了処理
         cap.release()
         if out:
-            out.write(frame_bgr)  # 最後のフレームを書き込み
             out.release()
         if enable_video_display:
             cv2.destroyAllWindows()
         if perf_log_f:
             perf_log_f.close()
-
-        # 処理時間の表示
-        total_time = time.time() - start_time
-        print(f"処理完了: {frame_idx}フレーム処理 ({total_time:.1f}秒)")
-        if frame_idx > 0:
-            print(f"平均処理速度: {frame_idx / total_time:.1f}fps")
+        print(f"処理完了。出力ファイル: {output_file}, ログ: {perf_log_file}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ByteTrackを使った長時間滞在検出")
-    parser.add_argument("input", help="入力動画ファイルパス")
-    parser.add_argument("-o", "--output", help="出力動画ファイルパス")
+    parser = argparse.ArgumentParser(
+        description="動画からByteTrackを用いて長時間滞在を検出します。"
+    )
     parser.add_argument(
-        "-m",
+        "--input",
+        type=str,
+        required=True,
+        help="入力動画ファイルのパス。 (例: data/sample.mp4)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="output/tracked_video.mp4",
+        help="出力動画ファイルのパス。 (例: output/tracked_sample.mp4)",
+    )
+    parser.add_argument(
         "--model",
-        default="yolov11n-pose.pt",
-        help="YOLOモデルパス (default: yolov11n-pose.pt)",
-    )
-    parser.add_argument("--perf-log", action="store_true", help="パフォーマンスログを有効化")
-    parser.add_argument("--display", action="store_true", help="処理中のビデオをリアルタイム表示")
-    parser.add_argument("--device", default="", help="推論デバイス (cpu/cuda/mps, 空欄ならauto)")
-    parser.add_argument(
-        "--stay-threshold",
-        type=float,
-        default=4.0,
-        help="滞在とみなす時間閾値（秒） (default: 4.0)",
+        type=str,
+        default="yolov8n.pt",  # 修正: yolo11n-pose.pt から yolov8n.pt へ変更の提案（一般的であるため）
+        help="YOLOモデルファイルのパス。 (例: models/yolov8n.pt)",
     )
     parser.add_argument(
-        "--move-threshold",
-        type=float,
-        default=20.0,
-        help="移動とみなす距離閾値（ピクセル） (default: 20.0)",
+        "--enable_perf_log",
+        action="store_true",
+        help="パフォーマンスログをCSVファイルに保存します。",
     )
-    parser.add_argument("--conf", type=float, default=0.3, help="検出信頼度閾値 (default: 0.3)")
+    parser.add_argument(
+        "--enable_video_display",
+        action="store_true",
+        help="処理中の動画をリアルタイムで表示します。",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="",  # 自動選択を促す
+        help="推論に使用するデバイスを指定します。(例: cpu, mps, 0 for cuda:0)",
+    )
+    parser.add_argument(
+        "--stay_threshold_sec",
+        type=float,
+        default=5.0,  # 修正: 4.0から5.0へ変更の提案（より実用的か）
+        help="長時間滞在と判定する閾値（秒）。デフォルト: 5.0秒",
+    )
+    parser.add_argument(
+        "--move_threshold_px",
+        type=float,
+        default=30.0,  # 修正: 20.0から30.0へ変更の提案（より実用的か）
+        help="移動と判定するためのピクセル単位の閾値。デフォルト: 30.0ピクセル",
+    )
+    parser.add_argument(
+        "--conf",
+        type=float,
+        default=0.3,  # yolov8のデフォルトに近い値
+        help="YOLOの検出信頼度の閾値。デフォルト: 0.3",
+    )
 
     args = parser.parse_args()
 
+    # 出力ディレクトリの作成
+    if args.output:
+        output_dir = Path(args.output).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     main(
-        args.input,
-        args.output,
+        input_file=args.input,
+        output_file=args.output,
         model_path=args.model,
-        enable_perf_log=args.perf_log,
-        enable_video_display=args.display,
+        enable_perf_log=args.enable_perf_log,
+        enable_video_display=args.enable_video_display,
         device=args.device,
-        stay_threshold_sec=args.stay_threshold,
-        move_threshold_px=args.move_threshold,
+        stay_threshold_sec=args.stay_threshold_sec,
+        move_threshold_px=args.move_threshold_px,
         conf=args.conf,
     )

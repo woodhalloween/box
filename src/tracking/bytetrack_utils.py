@@ -172,7 +172,10 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
     input_stem = Path(input_file).stem
     model_stem = Path(model_path).stem
 
-    perf_log_file = f"log_{input_stem}_{log_type}_{model_stem}_{timestamp_log}.csv"
+    # outputディレクトリの作成
+    output_dir = Path("output/logs")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    perf_log_file = output_dir / f"log_{input_stem}_{log_type}_{model_stem}_{timestamp_log}.csv"
 
     perf_columns = [
         "Frame",
@@ -193,31 +196,35 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
     if log_type == "long_stay":
         perf_columns.insert(4, "Stay_Check_Time_ms")
 
+    perf_log_f = None  # Initialize perf_log_f
     try:
-        with open(perf_log_file, "w", newline="") as perf_log_f:
-            perf_log_writer = csv.writer(perf_log_f)
-            perf_log_writer.writerow(["# System Information"])
-            perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
-            perf_log_writer.writerow(["# Python", system_info["python_version"]])
-            perf_log_writer.writerow(
-                [
-                    "# CPU",
-                    system_info["cpu"],
-                    f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
-                ]
-            )
-            perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(["# YOLO Model", model_path])
-            perf_log_writer.writerow(["# Tracker", "bytetrack"])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(["# Video", input_file])
-            perf_log_writer.writerow([])
-            perf_log_writer.writerow(perf_columns)
-            print(f"パフォーマンスログ: 有効 ({perf_log_file})")
-            return perf_log_file, perf_log_f, perf_log_writer
+        # with open(perf_log_file, "w", newline="") as perf_log_f:
+        perf_log_f = open(perf_log_file, "w", newline="")
+        perf_log_writer = csv.writer(perf_log_f)
+        perf_log_writer.writerow(["# System Information"])
+        perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
+        perf_log_writer.writerow(["# Python", system_info["python_version"]])
+        perf_log_writer.writerow(
+            [
+                "# CPU",
+                system_info["cpu"],
+                f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
+            ]
+        )
+        perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
+        perf_log_writer.writerow([])
+        perf_log_writer.writerow(["# YOLO Model", model_path])
+        perf_log_writer.writerow(["# Tracker", "bytetrack"])
+        perf_log_writer.writerow([])
+        perf_log_writer.writerow(["# Video", input_file])
+        perf_log_writer.writerow([])
+        perf_log_writer.writerow(perf_columns)
+        print(f"パフォーマンスログ: 有効 ({perf_log_file})")
+        return str(perf_log_file), perf_log_f, perf_log_writer  # Return path as string
     except OSError as e:
         print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
+        if perf_log_f:
+            perf_log_f.close()  # Close if an error occurs after opening
         return None, None, None
 
 
@@ -332,13 +339,17 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
     return stay_info, notifications, stay_check_time_ms
 
 
-def initialize_bytetrack():
-    """ByteTrackトラッカーを初期化"""
+def initialize_bytetrack(frame_rate=30):
+    """ByteTrackトラッカーを初期化
+
+    Args:
+        frame_rate (int, optional): トラッカーのフレームレート. Defaults to 30.
+    """
     # track_thresh: 追跡を開始するための信頼度の閾値。デフォルトは0.5。
     # track_buffer: 追跡が途切れた後、IDを保持するフレーム数。デフォルトは30。
     # match_thresh: 追跡と検出を関連付けるためのIoUの閾値。デフォルトは0.8。
-    # frame_rate: ビデオのフレームレート。デフォルトは30。
-    return ByteTrack(track_thresh=0.5, track_buffer=30, match_thresh=0.8, frame_rate=30)
+    # frame_rate: ビデオのフレームレート。
+    return ByteTrack(track_thresh=0.5, track_buffer=30, match_thresh=0.8, frame_rate=frame_rate)
 
 
 def load_yolo_model(model_path, device=""):

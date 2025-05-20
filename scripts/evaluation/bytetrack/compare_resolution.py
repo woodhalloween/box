@@ -9,7 +9,7 @@ import cv2
 import psutil
 
 # 共通ユーティリティをインポート
-from bytetrack_utils import (
+from src.tracking.bytetrack_utils import (
     DetectionResults,
     draw_tracking_info,
     get_system_info,
@@ -249,8 +249,7 @@ def compare_resolutions(
         # 出力ファイル名の設定
         output_file = os.path.join(output_dir, f"output_{width}x{height}.mp4")
 
-        # 動画処理の実行
-        results = process_video(
+        resolution_results = process_video(
             input_file,
             output_file,
             model,
@@ -259,21 +258,18 @@ def compare_resolutions(
             height,
             original_width,
             original_height,
-            enable_preview,
+            enable_preview=enable_preview,
         )
 
-        if results:
-            resolution_key = f"{width}x{height}"
-            all_results[resolution_key] = results.get_summary()
-
-    # 結果をログファイルに保存
-    try:
-        with open(log_file, "a", newline="") as f:
-            writer = csv.writer(f)
-            for resolution, summary in all_results.items():
-                writer.writerow(
+        if resolution_results:
+            all_results[f"{width}x{height}"] = resolution_results.get_summary()
+            # ログファイルに追記
+            with open(log_file, "a", newline="") as log_f:
+                log_writer = csv.writer(log_f)
+                summary = all_results[f"{width}x{height}"]
+                log_writer.writerow(
                     [
-                        resolution,
+                        f"{width}x{height}",
                         summary["frame_count"],
                         f"{summary['avg_detection_time']:.2f}",
                         f"{summary['avg_tracking_time']:.2f}",
@@ -282,44 +278,45 @@ def compare_resolutions(
                         f"{summary['avg_objects_tracked']:.2f}",
                         summary["max_objects_detected"],
                         summary["max_objects_tracked"],
-                        f"{summary['avg_detection_conf']:.4f}",
+                        f"{summary['avg_detection_conf']:.3f}",
                         f"{summary['avg_memory_usage']:.2f}",
                     ]
                 )
-        print(f"\n結果を保存しました: {log_file}")
-    except Exception as e:
-        print(f"結果の保存中にエラーが発生しました: {e}")
+            print(f"結果 ({width}x{height}): {summary}")
 
-    # 結果を表示
-    print("\n===== 比較結果 =====")
-    for resolution, summary in all_results.items():
-        print(f"\n解像度 {resolution} の結果:")
-        print(f"  処理フレーム数: {summary['frame_count']}")
-        print(f"  平均検出時間: {summary['avg_detection_time']:.2f}ms")
-        print(f"  平均追跡時間: {summary['avg_tracking_time']:.2f}ms")
+    print("\n===== 全解像度の比較結果 =====")
+    for res, summary in all_results.items():
+        print(f"解像度 {res}:")
         print(f"  平均FPS: {summary['avg_fps']:.2f}")
+        print(f"  平均検出時間: {summary['avg_detection_time']:.2f} ms")
+        print(f"  平均追跡時間: {summary['avg_tracking_time']:.2f} ms")
         print(f"  平均検出オブジェクト数: {summary['avg_objects_detected']:.2f}")
         print(f"  平均追跡オブジェクト数: {summary['avg_objects_tracked']:.2f}")
-        print(f"  最大検出オブジェクト数: {summary['max_objects_detected']}")
-        print(f"  最大追跡オブジェクト数: {summary['max_objects_tracked']}")
-        print(f"  平均検出信頼度: {summary['avg_detection_conf']:.4f}")
-        print(f"  平均メモリ使用量: {summary['avg_memory_usage']:.2f}MB")
+        print(f"  平均検出信頼度: {summary['avg_detection_conf']:.3f}")
+
+    print(f"\nログファイル: {log_file}")
+    print("比較処理完了。")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="異なる解像度でのYOLOv11+ByteTrack性能比較")
-    parser.add_argument("input", help="入力動画ファイル")
-    parser.add_argument(
-        "-o", "--output-dir", default="output", help="出力ディレクトリ (デフォルト: output)"
+    parser = argparse.ArgumentParser(
+        description="異なる解像度でのYOLOv11とByteTrackの性能を比較します。"
     )
+    parser.add_argument("--input", type=str, required=True, help="入力動画ファイルのパス")
     parser.add_argument(
-        "-m", "--model", default="yolov11n.pt", help="YOLOモデルパス (デフォルト: yolov11n.pt)"
+        "--output_dir",
+        type=str,
+        default="output/resolution_comparison",
+        help="出力ディレクトリのパス",
     )
-    parser.add_argument("--preview", action="store_true", help="処理中のプレビューを表示")
+    parser.add_argument("--model", type=str, default="yolov11n.pt", help="YOLOモデルファイルのパス")
+    parser.add_argument("--preview", action="store_true", help="処理中のプレビューを表示する")
     parser.add_argument(
-        "--device", default="", help="推論デバイス (例: cpu, 0, '', デフォルト: auto)"
+        "--device",
+        type=str,
+        default="",
+        help="デバイス指定 (例: 'cpu', 'mps', '0' for GPU 0)",
     )
-
     args = parser.parse_args()
 
     compare_resolutions(

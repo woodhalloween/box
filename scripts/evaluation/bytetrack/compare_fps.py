@@ -9,7 +9,7 @@ import cv2
 import psutil
 
 # 共通ユーティリティをインポート
-from bytetrack_utils import (
+from src.tracking.bytetrack_utils import (
     DetectionResults,
     draw_tracking_info,
     get_system_info,
@@ -256,73 +256,81 @@ def compare_fps(
 
     # モデルの読み込み
     model = load_yolo_model(model_path, device)
+    if not model:
+        return
 
     # 入力ファイルの情報を取得
     cap = cv2.VideoCapture(input_file)
     if not cap.isOpened():
-        print(f"エラー: 入力動画を開けません: {input_file}")
+        print(f"エラー: 元の入力動画を開けません: {input_file}")
         return
 
-    orig_fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    print(f"入力動画: {width}x{height}, {orig_fps}fps, {frame_count}フレーム")
+    print(
+        f"元の入力動画: {original_width}x{original_height}, {original_fps:.2f}fps, {frame_count}フレーム"
+    )
 
     # 出力ディレクトリの作成
     os.makedirs(output_dir, exist_ok=True)
 
-    # 比較するFPS値のリスト
-    fps_values = [10, int(orig_fps)]  # 10fpsと元の動画のFPSを比較
+    # 比較するFPSの値 (元のFPSと指定されたターゲットFPS)
+    fps_values_to_compare = [original_fps, target_fps]
 
     # ログファイルの初期化
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(output_dir, f"fps_comparison_{Path(model_path).stem}_{timestamp}.csv")
-    initialize_log_file(log_file, input_file, model_path, fps_values)
+    initialize_log_file(log_file, input_file, model_path, fps_values_to_compare)
 
     all_results = {}
 
-    # 元のFPSの動画を処理
-    original_fps_int = int(orig_fps)
-    print(f"\n===== 元の動画 ({original_fps_int}fps) を処理中 =====")
+    # 各FPSで処理を実行
+    for current_proc_fps in fps_values_to_compare:
+        print(f"\n===== FPS {current_proc_fps:.2f} を処理中 =====")
 
-    # トラッカーの初期化
-    tracker = initialize_bytetrack()
+        video_to_process = input_file
+        temp_video_file = None
 
-    output_file = os.path.join(output_dir, f"output_{original_fps_int}fps.mp4")
-    results_original = process_video(
-        input_file, output_file, model, tracker, enable_preview=enable_preview
-    )
-    if results_original:
-        all_results[original_fps_int] = results_original.get_summary()
+        # 必要であればFPSを変換した一時動画を作成
+        if abs(current_proc_fps - original_fps) > 0.1:  # わずかな違いは無視
+            temp_video_file = os.path.join(output_dir, f"temp_video_{current_proc_fps:.0f}fps.mp4")
+            if not create_lower_fps_video(input_file, temp_video_file, target_fps=current_proc_fps):
+                print(
+                    f"エラー: {current_proc_fps}fpsの動画作成に失敗しました。このFPSでの処理をスキップします。"
+                )
+                continue
+            video_to_process = temp_video_file
 
-    # 低FPSの動画を作成して処理
-    if target_fps != original_fps_int:
-        print(f"\n===== 低FPS動画 ({target_fps}fps) を作成中 =====")
-        lower_fps_video = os.path.join(output_dir, f"input_{target_fps}fps.mp4")
-        if create_lower_fps_video(input_file, lower_fps_video, target_fps):
-            print(f"\n===== 低FPS動画 ({target_fps}fps) を処理中 =====")
+        # トラッカーの初期化（各FPSで新しいインスタンスを使用）
+        tracker = initialize_bytetrack(frame_rate=current_proc_fps)
+        print(f"ByteTrack initialized with frame_rate: {current_proc_fps}")
 
-            # 新しいトラッカーの初期化
-            tracker = initialize_bytetrack()
+        # 出力ファイル名の設定 (処理済み動画)
+        output_video_file = os.path.join(
+            output_dir, f"output_{Path(video_to_process).stem}_processed.mp4"
+        )
 
-            output_file = os.path.join(output_dir, f"output_{target_fps}fps.mp4")
-            results_low_fps = process_video(
-                lower_fps_video, output_file, model, tracker, enable_preview=enable_preview
-            )
-            if results_low_fps:
-                all_results[target_fps] = results_low_fps.get_summary()
+        fps_results = process_video(
+            video_to_process,
+            output_video_file,
+            model,
+            tracker,
+            enable_preview=enable_preview,
+        )
 
-    # 結果をログファイルに保存
-    try:
-        with open(log_file, "a", newline="") as f:
-            writer = csv.writer(f)
-            for fps, summary in all_results.items():
-                writer.writerow(
+        if fps_results:
+            all_results[f"{current_proc_fps:.2f}fps"] = fps_results.get_summary()
+            # ログファイルに追記
+            with open(log_file, "a", newline="") as log_f:
+                log_writer = csv.writer(log_f)
+                summary = all_results[f"{current_proc_fps:.2f}fps"]
+                log_writer.writerow(
                     [
-                        fps,
+                        f"{current_proc_fps:.2f}",
                         summary["frame_count"],
                         f"{summary['avg_detection_time']:.2f}",
                         f"{summary['avg_tracking_time']:.2f}",
@@ -331,47 +339,56 @@ def compare_fps(
                         f"{summary['avg_objects_tracked']:.2f}",
                         summary["max_objects_detected"],
                         summary["max_objects_tracked"],
-                        f"{summary['avg_detection_conf']:.4f}",
+                        f"{summary['avg_detection_conf']:.3f}",
                         f"{summary['avg_memory_usage']:.2f}",
                     ]
                 )
-        print(f"\n結果を保存しました: {log_file}")
-    except Exception as e:
-        print(f"結果の保存中にエラーが発生しました: {e}")
+            print(f"結果 ({current_proc_fps:.2f}fps): {summary}")
 
-    # 結果を表示
-    print("\n===== 比較結果 =====")
-    for fps, summary in all_results.items():
-        print(f"\n{fps}fps の結果:")
-        print(f"  処理フレーム数: {summary['frame_count']}")
-        print(f"  平均検出時間: {summary['avg_detection_time']:.2f}ms")
-        print(f"  平均追跡時間: {summary['avg_tracking_time']:.2f}ms")
-        print(f"  平均FPS: {summary['avg_fps']:.2f}")
+        # 一時ファイルの削除
+        if temp_video_file and os.path.exists(temp_video_file):
+            try:
+                os.remove(temp_video_file)
+                print(f"一時ファイル {temp_video_file} を削除しました。")
+            except OSError as e:
+                print(f"エラー: 一時ファイル {temp_video_file} の削除に失敗しました: {e}")
+
+    print("\n===== 全FPSの比較結果 =====")
+    for fps_val, summary in all_results.items():
+        print(f"FPS {fps_val}:")
+        print(f"  平均FPS(処理能力): {summary['avg_fps']:.2f}")
+        print(f"  平均検出時間: {summary['avg_detection_time']:.2f} ms")
+        print(f"  平均追跡時間: {summary['avg_tracking_time']:.2f} ms")
         print(f"  平均検出オブジェクト数: {summary['avg_objects_detected']:.2f}")
         print(f"  平均追跡オブジェクト数: {summary['avg_objects_tracked']:.2f}")
-        print(f"  最大検出オブジェクト数: {summary['max_objects_detected']}")
-        print(f"  最大追跡オブジェクト数: {summary['max_objects_tracked']}")
-        print(f"  平均検出信頼度: {summary['avg_detection_conf']:.4f}")
-        print(f"  平均メモリ使用量: {summary['avg_memory_usage']:.2f}MB")
+        print(f"  平均検出信頼度: {summary['avg_detection_conf']:.3f}")
+
+    print(f"\nログファイル: {log_file}")
+    print("比較処理完了。")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="異なるFPSでのYOLOv11+ByteTrack性能比較")
-    parser.add_argument("input", help="入力動画ファイル")
-    parser.add_argument(
-        "-o", "--output-dir", default="output", help="出力ディレクトリ (デフォルト: output)"
+    parser = argparse.ArgumentParser(
+        description="異なるFPSでのYOLOv11とByteTrackの性能を比較します。"
     )
+    parser.add_argument("--input", type=str, required=True, help="入力動画ファイルのパス")
     parser.add_argument(
-        "-m", "--model", default="yolov11n.pt", help="YOLOモデルパス (デフォルト: yolov11n.pt)"
+        "--output_dir",
+        type=str,
+        default="output/fps_comparison",
+        help="出力ディレクトリのパス",
     )
-    parser.add_argument("--preview", action="store_true", help="処理中のプレビューを表示")
+    parser.add_argument("--model", type=str, default="yolov11n.pt", help="YOLOモデルファイルのパス")
     parser.add_argument(
-        "--device", default="", help="推論デバイス (例: cpu, 0, '', デフォルト: auto)"
+        "--target_fps", type=int, default=10, help="比較対象とする低FPSの値 (例: 10)"
     )
+    parser.add_argument("--preview", action="store_true", help="処理中のプレビューを表示する")
     parser.add_argument(
-        "--target-fps", type=int, default=10, help="比較対象のFPS (デフォルト: 10fps)"
+        "--device",
+        type=str,
+        default="",
+        help="デバイス指定 (例: 'cpu', 'mps', '0' for GPU 0)",
     )
-
     args = parser.parse_args()
 
     compare_fps(
