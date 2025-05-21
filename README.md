@@ -30,6 +30,14 @@ poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4
 
 # モデルや閾値を指定して実行
 poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4 --output data/output/output_video.mp4 --log_dir logs/ --yolo_model models/yolov8n-pose.pt --stay-threshold 10 --move-threshold 15
+
+# yolo11n-pose.pt を使用し、リアルタイム表示を有効にして実行する例
+poetry run python scripts/detect_long_stay.py \
+    --input data/videos/WIN_20250319_10_03_53_Pro.mp4 \
+    --output output/custom_output.mp4 \
+    --model models/yolo11n-pose.pt \
+    --stay_threshold_sec 10 \
+    --enable_video_display
 ```
 
 ### (旧機能) 頭部姿勢検出スクリプトの実行例
