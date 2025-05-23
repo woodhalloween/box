@@ -25,11 +25,16 @@ poetry install
 ### 長時間滞在検出スクリプトの実行例
 
 ```bash
-# 基本的な実行 (デフォルト設定: YOLOv8nモデル使用、滞在閾値6秒、移動閾値20ピクセル)
-poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4 --output data/output/output_video.mp4 --log_dir logs/
+# 基本的な実行 (デフォルト設定)
+poetry run python scripts/detect_long_stay.py --input data/videos/your_video.mp4 --output output/tracked_video.mp4
 
 # モデルや閾値を指定して実行
-poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4 --output data/output/output_video.mp4 --log_dir logs/ --yolo_model models/yolov8n-pose.pt --stay-threshold 10 --move-threshold 15
+poetry run python scripts/detect_long_stay.py \
+    --input data/videos/your_video.mp4 \
+    --output output/tracked_video.mp4 \
+    --model models/yolov8n-pose.pt \
+    --stay_threshold_sec 10 \
+    --move_threshold_px 15
 
 # yolo11n-pose.pt を使用し、リアルタイム表示を有効にして実行する例
 poetry run python scripts/detect_long_stay.py \
@@ -38,6 +43,13 @@ poetry run python scripts/detect_long_stay.py \
     --model models/yolo11n-pose.pt \
     --stay_threshold_sec 10 \
     --enable_video_display
+
+# パフォーマンスログを有効にして実行
+poetry run python scripts/detect_long_stay.py \
+    --input data/videos/your_video.mp4 \
+    --output output/tracked_video.mp4 \
+    --model models/yolo11n-pose.pt \
+    --enable_perf_log
 ```
 
 ### (旧機能) 頭部姿勢検出スクリプトの実行例
