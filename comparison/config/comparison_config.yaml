@@ -1,0 +1,116 @@
+# YOLO vs ByteTrack ID付与比較設定ファイル
+
+# 基本設定
+basic:
+  model_path: "yolo11n.pt"
+  confidence_threshold: 0.3
+  device: ""  # auto-detect
+  output_directory: "comparison/output"
+
+# 入力設定
+input:
+  test_video_paths:
+    - "data/test_video.mp4"
+    - "2025-05-03_152528フロア10minites_30sec.mp4"
+    - "tracked_2025-05-03_152528フロア10minites_30sec_bytetrack.mp4"
+  
+  processing:
+    max_frames: null  # null = 全フレーム処理
+    batch_size: 1
+    skip_frames: 0
+
+# 手法別パラメータ
+trackers:
+  yolo_simple:
+    enabled: true
+    distance_threshold: 50.0
+    max_disappeared_frames: 10
+    
+  yolo_advanced:
+    enabled: false  # 実装が複雑なため今回は無効
+    appearance_weight: 0.3
+    position_weight: 0.7
+    iou_threshold: 0.3
+    feature_dim: 128
+    max_disappeared_frames: 30
+    similarity_threshold: 0.6
+    
+  bytetrack:
+    enabled: true
+    track_thresh: 0.5
+    track_buffer: 30
+    match_thresh: 0.8
+    frame_rate: 30
+
+# 評価設定
+evaluation:
+  metrics:
+    accuracy:
+      - "id_consistency"
+      - "id_switches" 
+      - "track_continuity"
+    performance:
+      - "processing_time"
+      - "memory_usage"
+      - "fps"
+    reliability:
+      - "tracking_stability"
+      - "occlusion_handling"
+  
+  id_switch_detection:
+    distance_threshold: 100  # ピクセル
+    confidence_threshold: 0.5
+
+# 出力設定
+output:
+  save_results: true
+  save_videos: false
+  real_time_display: false
+  
+  files:
+    csv_results: true
+    json_summary: true
+    detailed_logs: true
+    
+  video_output:
+    enabled: false
+    codec: "mp4v"
+    fps: 30
+    display_info:
+      - "id_number"
+      - "confidence"
+      - "method_type"
+      - "processing_time"
+
+# 表示設定
+display:
+  comparison_view:
+    split_screen: true
+    show_metrics: true
+    update_interval: 1  # フレーム
+    
+  colors:
+    yolo_simple: [0, 255, 0]    # 緑
+    yolo_advanced: [255, 0, 0]  # 赤
+    bytetrack: [0, 0, 255]      # 青
+    
+# デバッグ設定
+debug:
+  verbose: false
+  save_intermediate: false
+  memory_profiling: false
+  timing_detailed: false
+
+# テストシナリオ
+test_scenarios:
+  quick_demo:
+    max_frames: 300
+    description: "10秒程度の短時間デモ"
+    
+  standard_test:
+    max_frames: 1800  # 1分間（30fps）
+    description: "標準的な1分間テスト"
+    
+  full_video:
+    max_frames: null
+    description: "動画全体を処理" 

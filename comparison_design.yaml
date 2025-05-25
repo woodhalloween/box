@@ -1,0 +1,139 @@
+# YOLO単体 vs ByteTrack ID付与比較実装　抽象化YAML定義書
+
+project:
+  name: "YOLO_ByteTrack_ID_Comparison"
+  description: "YOLO単体のID付与とByteTrackでのID付与の比較実装"
+  version: "1.0.0"
+
+architecture:
+  comparison_types:
+    - name: "yolo_simple_id"
+      description: "YOLO単体での簡単なID付与（位置ベース）"
+    - name: "yolo_advanced_id" 
+      description: "YOLO単体での高度なID付与（特徴量マッチング）"
+    - name: "bytetrack_id"
+      description: "ByteTrackによるID付与"
+
+components:
+  base_detection:
+    model_types:
+      - "yolo11n"
+      - "yolo11n-pose"
+    confidence_threshold: "${confidence}"
+    classes: [0]  # person only
+    
+  id_assignment:
+    yolo_simple:
+      method: "position_based"
+      distance_threshold: "${distance_threshold}"
+      max_disappeared_frames: "${max_disappeared_frames}"
+      
+    yolo_advanced:
+      method: "feature_matching"
+      appearance_weight: "${appearance_weight}"
+      position_weight: "${position_weight}"
+      iou_threshold: "${iou_threshold}"
+      
+    bytetrack:
+      track_thresh: "${bytetrack_track_thresh}"
+      track_buffer: "${bytetrack_track_buffer}"
+      match_thresh: "${bytetrack_match_thresh}"
+      frame_rate: "${frame_rate}"
+
+evaluation_metrics:
+  accuracy:
+    - "identity_consistency"    # ID一貫性
+    - "identity_switches"       # IDスイッチ回数
+    - "fragmentation_rate"      # 断片化率
+    
+  performance:
+    - "processing_time_ms"      # 処理時間
+    - "memory_usage_mb"         # メモリ使用量
+    - "fps"                     # フレームレート
+    
+  reliability:
+    - "tracking_stability"      # 追跡安定性
+    - "occlusion_handling"      # 遮蔽処理
+    - "reidentification_rate"   # 再識別率
+
+output_format:
+  video:
+    codec: "mp4v"
+    fps: "${frame_rate}"
+    display_info:
+      - "id_number"
+      - "confidence"
+      - "method_type"
+      
+  logs:
+    comparison_log:
+      columns:
+        - "frame_number"
+        - "timestamp"
+        - "method_type"
+        - "object_id"
+        - "bbox"
+        - "confidence"
+        - "processing_time"
+        - "memory_usage"
+    
+    performance_summary:
+      columns:
+        - "method_name"
+        - "avg_processing_time"
+        - "avg_fps"
+        - "total_id_switches"
+        - "tracking_accuracy"
+
+variables:
+  # 基本パラメータ
+  confidence: 0.3
+  frame_rate: 30
+  
+  # YOLO簡易ID付与パラメータ
+  distance_threshold: 50
+  max_disappeared_frames: 10
+  
+  # YOLO高度ID付与パラメータ
+  appearance_weight: 0.3
+  position_weight: 0.7
+  iou_threshold: 0.3
+  
+  # ByteTrackパラメータ
+  bytetrack_track_thresh: 0.5
+  bytetrack_track_buffer: 30
+  bytetrack_match_thresh: 0.8
+  
+  # 評価パラメータ
+  evaluation_duration: 60  # 秒
+  test_scenarios:
+    - "single_person"
+    - "multiple_persons"
+    - "occlusion_scenario"
+    - "crowded_scene"
+
+implementation_structure:
+  directories:
+    - "comparison/"
+    - "comparison/id_methods/"
+    - "comparison/evaluators/"
+    - "comparison/utils/"
+    - "comparison/output/"
+    
+  files:
+    core:
+      - "comparison/main_comparison.py"
+      - "comparison/id_methods/yolo_simple_tracker.py"
+      - "comparison/id_methods/yolo_advanced_tracker.py"
+      - "comparison/id_methods/bytetrack_wrapper.py"
+      - "comparison/evaluators/comparison_evaluator.py"
+      - "comparison/utils/visualization.py"
+      - "comparison/utils/metrics.py"
+      
+    config:
+      - "comparison/config/comparison_config.yaml"
+      
+    output:
+      - "comparison/output/comparison_results.csv"
+      - "comparison/output/performance_summary.json"
+      - "comparison/output/comparison_video.mp4" 
