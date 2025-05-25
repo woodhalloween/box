@@ -1,0 +1,84 @@
+# 顔認識統合システム設定ファイル
+
+face_detection:
+  # MediaPipe設定
+  max_num_faces: 10
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.5
+  refine_landmarks: true
+  min_face_size: 30  # 最小顔サイズ（ピクセル）
+  
+face_recognition:
+  # face_recognition ライブラリ設定
+  model: "large"  # "small" or "large"
+  num_jitters: 1  # 認識精度向上のためのジッター数
+  tolerance: 0.6  # 顔マッチング閾値（低いほど厳しい）
+  unknown_threshold: 0.8  # 未知の人物判定閾値
+  encoding_quality_threshold: 0.5  # 顔エンコーディング品質閾値
+  
+tracking_integration:
+  # ID統合設定
+  face_weight: 0.7  # 顔認識結果の重み
+  position_weight: 0.3  # 位置追跡結果の重み
+  temporal_consistency: 0.8  # 時間的一貫性の重み
+  id_consistency_buffer: 10  # ID安定化のためのバッファフレーム数
+  occlusion_timeout: 30  # 遮蔽時のタイムアウト（フレーム）
+  re_identification_frames: 5  # 再識別のためのフレーム数
+  
+database:
+  # データベース設定
+  type: "SQLite"
+  path: "data/face_database/face_recognition.db"
+  face_encodings_path: "data/face_encodings/"
+  max_stored_faces: 1000  # 最大保存顔数
+  cleanup_interval: 1000  # クリーンアップ間隔（フレーム）
+  backup_interval: 10000  # バックアップ間隔（フレーム）
+  
+performance:
+  # パフォーマンス設定
+  enable_gpu: true
+  batch_processing: false
+  cache_size: 100  # 顔エンコーディングキャッシュサイズ
+  max_concurrent_recognitions: 5  # 並列認識数
+  frame_skip_on_overload: true  # 負荷過多時のフレームスキップ
+  target_fps: 25  # 目標FPS
+  
+logging:
+  # ログ設定
+  level: "INFO"
+  face_recognition_log: "logs/face_recognition.log"
+  id_management_log: "logs/id_management.log"
+  performance_log: "logs/enhanced_performance.log"
+  enable_debug_images: false  # デバッグ用画像保存
+  debug_images_path: "data/debug_images/"
+  
+visualization:
+  # 可視化設定
+  show_face_boxes: true
+  show_person_boxes: true
+  show_id_labels: true
+  show_confidence: true
+  show_recognition_status: true
+  face_box_color: [255, 0, 0]  # BGR: 青
+  person_box_color: [0, 255, 0]  # BGR: 緑
+  known_person_color: [0, 255, 255]  # BGR: 黄
+  unknown_person_color: [0, 0, 255]  # BGR: 赤
+  font_scale: 0.6
+  font_thickness: 2
+  
+error_handling:
+  # エラーハンドリング設定
+  face_detection_failure: "continue_with_position_tracking"
+  face_recognition_failure: "use_basic_tracking_id"
+  database_connection_error: "fallback_to_memory_storage"
+  memory_overflow: "clear_old_encodings"
+  max_error_count: 100  # 最大エラー数
+  error_reset_interval: 1000  # エラーカウントリセット間隔
+  
+quality_control:
+  # 品質制御設定
+  min_face_quality: 0.5  # 最小顔品質スコア
+  blur_threshold: 100  # ブラー検出閾値
+  brightness_threshold: [50, 200]  # 明度範囲
+  face_angle_threshold: 45  # 最大顔角度（度）
+  face_size_threshold: [30, 500]  # 顔サイズ範囲（ピクセル） 

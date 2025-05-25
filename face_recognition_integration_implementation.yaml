@@ -1,0 +1,184 @@
+# 顔認識統合ID付与システム 実装YAML定義書
+
+project:
+  name: "Face_Recognition_Enhanced_ID_System"
+  description: "顔認識を統合したID付与精度向上システム"
+  version: "1.0.0"
+  base_system: "human-activity-analyzer"
+
+architecture:
+  integration_approach: "ハイブリッド追跡システム"
+  
+  components:
+    face_detection:
+      library: "MediaPipe"
+      model: "BlazeFace"
+      min_detection_confidence: 0.7
+      min_tracking_confidence: 0.5
+      
+    face_recognition:
+      library: "face_recognition"
+      encoding_model: "large"
+      face_distance_threshold: 0.6
+      unknown_person_threshold: 0.8
+      
+    tracking_integration:
+      primary_tracker: "ByteTrack"
+      face_tracking_weight: 0.7
+      position_tracking_weight: 0.3
+      id_consistency_buffer: 10
+      
+    id_management:
+      database_type: "SQLite"
+      face_encodings_storage: "pickle"
+      id_persistence_frames: 30
+      max_stored_faces: 1000
+
+implementation_files:
+  core_modules:
+    face_detector: "src/face_recognition/face_detector.py"
+    face_recognizer: "src/face_recognition/face_recognizer.py"
+    id_manager: "src/face_recognition/id_manager.py"
+    hybrid_tracker: "src/tracking/hybrid_tracker.py"
+    
+  integration:
+    enhanced_tracker: "src/tracking/enhanced_bytetrack.py"
+    face_db_manager: "src/face_recognition/face_database.py"
+    
+  scripts:
+    main_enhanced_tracking: "scripts/detect_long_stay_enhanced.py"
+    face_registration: "scripts/register_faces.py"
+    
+  config:
+    face_config: "config/face_recognition_config.yaml"
+    
+  utils:
+    visualization: "src/utils/enhanced_visualization.py"
+    metrics: "src/utils/face_tracking_metrics.py"
+
+directory_structure:
+  new_directories:
+    - "src/face_recognition"
+    - "data/face_database"
+    - "data/face_encodings"
+    - "config/face_recognition"
+
+performance_targets:
+  id_accuracy: "98%"
+  tracking_continuity: "95%"
+  re_identification_rate: "90%"
+  real_time_fps: "25+"
+  face_recognition_latency: "<50ms"
+
+processing_pipeline:
+  stage1_detection:
+    input: "Video Frame"
+    process: "YOLO Person Detection"
+    output: "Person Bounding Boxes"
+    
+  stage2_tracking:
+    input: "Person Bounding Boxes"
+    process: "ByteTrack Basic Tracking"
+    output: "Basic Track IDs"
+    
+  stage3_face_detection:
+    input: "Video Frame + Person Boxes"
+    process: "MediaPipe Face Detection"
+    output: "Face Crops + Landmarks"
+    
+  stage4_face_recognition:
+    input: "Face Crops"
+    process: "Face Encoding + Database Match"
+    output: "Person Identity IDs"
+    
+  stage5_id_fusion:
+    input: "Basic Track IDs + Person Identity IDs"
+    process: "Hybrid ID Management"
+    output: "Enhanced Stable IDs"
+
+database_schema:
+  persons_table:
+    id: "INTEGER PRIMARY KEY"
+    name: "TEXT"
+    first_seen: "TIMESTAMP"
+    last_seen: "TIMESTAMP"
+    total_appearances: "INTEGER"
+    
+  face_encodings_table:
+    id: "INTEGER PRIMARY KEY"
+    person_id: "INTEGER FOREIGN KEY"
+    encoding: "BLOB"
+    quality_score: "REAL"
+    created_at: "TIMESTAMP"
+    
+  tracking_sessions_table:
+    id: "INTEGER PRIMARY KEY"
+    person_id: "INTEGER"
+    track_id: "INTEGER"
+    start_time: "TIMESTAMP"
+    end_time: "TIMESTAMP"
+    confidence: "REAL"
+
+dependencies:
+  new_packages:
+    - "face-recognition>=1.3.0"
+    - "mediapipe>=0.10.0"
+    - "sqlite3"
+    - "pickle"
+    - "scikit-learn>=1.0.0"
+    
+  optional_packages:
+    - "dlib>=19.24.0"
+    - "cmake"
+
+configuration_parameters:
+  face_detection:
+    max_num_faces: 10
+    refine_landmarks: true
+    min_face_size: 30
+    
+  face_recognition:
+    num_jitters: 1
+    tolerance: 0.6
+    model: "large"
+    
+  tracking_fusion:
+    face_weight: 0.7
+    position_weight: 0.3
+    temporal_consistency: 0.8
+    occlusion_timeout: 30
+    
+  performance:
+    enable_gpu: true
+    batch_processing: false
+    cache_size: 100
+
+error_handling:
+  face_detection_failure: "continue_with_position_tracking"
+  face_recognition_failure: "use_basic_tracking_id"
+  database_connection_error: "fallback_to_memory_storage"
+  memory_overflow: "clear_old_encodings"
+
+logging_configuration:
+  level: "INFO"
+  face_recognition_log: "logs/face_recognition.log"
+  id_management_log: "logs/id_management.log"
+  performance_log: "logs/enhanced_performance.log"
+
+evaluation_metrics:
+  accuracy_metrics:
+    - "identity_precision"
+    - "identity_recall"
+    - "id_switching_rate"
+    - "re_identification_accuracy"
+    
+  performance_metrics:
+    - "processing_fps"
+    - "face_detection_time"
+    - "face_recognition_time"
+    - "total_latency"
+    
+  stability_metrics:
+    - "tracking_continuity"
+    - "occlusion_recovery_rate"
+    - "long_term_consistency" 

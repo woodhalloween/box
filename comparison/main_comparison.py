@@ -41,6 +41,7 @@ def main():
         "--max-frames", type=int, default=None, help="処理する最大フレーム数 (default: 全フレーム)"
     )
     parser.add_argument("--display", action="store_true", help="リアルタイム比較表示を有効にする")
+    parser.add_argument("--save-video", action="store_true", help="比較結果を動画として保存する")
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -90,7 +91,10 @@ def main():
         # 動画処理実行
         print("\n動画処理を開始します...")
         results = evaluator.process_video(
-            video_path=args.video_path, max_frames=args.max_frames, display=args.display
+            video_path=args.video_path,
+            max_frames=args.max_frames,
+            display=args.display,
+            save_video=args.save_video,
         )
 
         # メトリクス計算

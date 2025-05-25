@@ -1,0 +1,47 @@
+{
+  "tracking_metrics": {
+    "YOLO_Simple": {
+      "method_name": "YOLO_Simple",
+      "total_frames": 686,
+      "avg_processing_time_ms": 27.374192855100937,
+      "avg_fps": 36.59674979220653,
+      "avg_memory_usage_mb": 1322.53774143586,
+      "total_detections": 611,
+      "total_tracks": 666,
+      "id_switches": 37,
+      "track_consistency": 0.939443535188216
+    },
+    "YOLO_Advanced": {
+      "method_name": "YOLO_Advanced",
+      "total_frames": 686,
+      "avg_processing_time_ms": 25.937184647985518,
+      "avg_fps": 38.51639820493354,
+      "avg_memory_usage_mb": 1322.7986060495627,
+      "total_detections": 611,
+      "total_tracks": 633,
+      "id_switches": 15,
+      "track_consistency": 0.9754500818330606
+    },
+    "ByteTrack": {
+      "method_name": "ByteTrack",
+      "total_frames": 686,
+      "avg_processing_time_ms": 24.777456205718373,
+      "avg_fps": 40.32355088272114,
+      "avg_memory_usage_mb": 1322.9206905976675,
+      "total_detections": 611,
+      "total_tracks": 577,
+      "id_switches": 2,
+      "track_consistency": 0.9967266775777414
+    }
+  },
+  "comparison_info": {
+    "total_frames": 686,
+    "model_path": "yolo11n.pt",
+    "confidence": 0.3,
+    "methods_compared": [
+      "YOLO_Simple",
+      "YOLO_Advanced",
+      "ByteTrack"
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from comparison.id_methods import BaseTracker, PerformanceMetrics, Track
 from comparison.id_methods.bytetrack_wrapper import ByteTrackWrapper
+from comparison.id_methods.yolo_advanced_tracker import YoloAdvancedTracker
 from comparison.id_methods.yolo_simple_tracker import YoloSimpleTracker
 
 
@@ -102,6 +103,17 @@ class ComparisonEvaluator:
             max_disappeared_frames=10,
         )
 
+        # YOLO高度トラッカー
+        trackers["YOLO_Advanced"] = YoloAdvancedTracker(
+            model_path=self.model_path,
+            confidence=self.confidence,
+            device=self.device,
+            appearance_weight=0.4,
+            position_weight=0.6,
+            max_disappeared_frames=20,
+            similarity_threshold=0.5,
+        )
+
         # ByteTrackラッパー
         trackers["ByteTrack"] = ByteTrackWrapper(
             model_path=self.model_path,
@@ -112,8 +124,6 @@ class ComparisonEvaluator:
             match_thresh=0.8,
             frame_rate=30,
         )
-
-        # 今回はYOLO高度版は省略（実装が複雑なため）
 
         return trackers
 
@@ -227,7 +237,11 @@ class ComparisonEvaluator:
         return switches
 
     def process_video(
-        self, video_path: str, max_frames: int | None = None, display: bool = False
+        self,
+        video_path: str,
+        max_frames: int | None = None,
+        display: bool = False,
+        save_video: bool = False,
     ) -> list[ComparisonResult]:
         """
         動画全体を処理して比較評価を実行
@@ -252,13 +266,75 @@ class ComparisonEvaluator:
         if max_frames:
             print(f"処理フレーム数: {max_frames}")
 
+        # 動画書き込み設定（オプション）
+        video_writer = None
+        video_path_out = None
+        if save_video:
+            # Mac互換のH.264コーデックを使用
+            fourcc = cv2.VideoWriter_fourcc(*"avc1")  # H.264コーデック（mp4vから変更）
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+
+            # 最初のフレームを読んで解像度を取得
+            ret, first_frame = cap.read()
+            if ret:
+                h, w = first_frame.shape[:2]
+                method_count = len(self.trackers)
+                # 横並び表示用の幅計算
+                display_w = w // method_count
+                output_width = display_w * method_count
+                output_height = h
+
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                video_filename = f"comparison_output_{timestamp}.mp4"
+                video_path_out = os.path.join(self.output_dir, video_filename)
+
+                # 出力ディレクトリを確認
+                os.makedirs(os.path.dirname(video_path_out), exist_ok=True)
+
+                video_writer = cv2.VideoWriter(
+                    video_path_out, fourcc, fps, (output_width, output_height)
+                )
+
+                # VideoWriterの初期化確認
+                if not video_writer.isOpened():
+                    print("警告: VideoWriterの初期化に失敗しました。動画保存をスキップします。")
+                    video_writer.release()
+                    video_writer = None
+                    save_video = False
+                else:
+                    print(f"比較動画を保存します: {video_path_out}")
+                    print(f"出力解像度: {output_width}x{output_height}, FPS: {fps}")
+                    print("コーデック: avc1 (H.264)")
+
+                    # 最初のフレームを処理
+                    result = self.process_frame(first_frame, 0)
+                    if display or save_video:
+                        display_frame = self._create_comparison_display(first_frame, result)
+                        if save_video and video_writer and video_writer.isOpened():
+                            # OpenCVのwrite()は正常でもFalseを返すことがあるため、
+                            # ファイルサイズで実際の書き込み状況を判定
+                            video_writer.write(display_frame)
+
+                        if display:
+                            cv2.imshow("Tracking Comparison", display_frame)
+
+                    frame_count = 1
+            else:
+                print("警告: 最初のフレームの読み込みに失敗しました")
+                save_video = False
+
+            # Videoキャプチャを再開
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
+                    print(f"フレーム読み込み終了: {frame_count}フレーム処理済み")
                     break
 
                 if max_frames and frame_count >= max_frames:
+                    print(f"最大フレーム数に到達: {max_frames}")
                     break
 
                 # フレーム処理
@@ -266,21 +342,47 @@ class ComparisonEvaluator:
 
                 # プログレス表示
                 if frame_count % 30 == 0:
+                    remaining = (
+                        total_frames - frame_count if not max_frames else (max_frames - frame_count)
+                    )
                     print(
-                        f"処理済みフレーム: {frame_count}/{total_frames if not max_frames else max_frames}"
+                        f"処理済みフレーム: {frame_count}/{total_frames if not max_frames else max_frames} (残り: {remaining})"
                     )
 
-                # リアルタイム表示（オプション）
-                if display:
+                # リアルタイム表示と動画保存（オプション）
+                if display or save_video:
                     display_frame = self._create_comparison_display(frame, result)
-                    cv2.imshow("Tracking Comparison", display_frame)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        break
+                    if save_video and video_writer and video_writer.isOpened():
+                        # OpenCVのwrite()は正常でもFalseを返すことがあるため、
+                        # ファイルサイズで実際の書き込み状況を判定
+                        video_writer.write(display_frame)
+                    if display:
+                        cv2.imshow("Tracking Comparison", display_frame)
+                        if cv2.waitKey(1) & 0xFF == ord("q"):
+                            break
 
                 frame_count += 1
 
         finally:
             cap.release()
+            if video_writer and video_writer.isOpened():
+                video_writer.release()
+                # 保存完了の確認
+                if video_path_out and os.path.exists(video_path_out):
+                    file_size = os.path.getsize(video_path_out) / (1024 * 1024)  # MB
+                    print(f"比較動画保存完了: {video_path_out} ({file_size:.2f}MB)")
+
+                    # ファイルサイズの妥当性確認
+                    if file_size < 0.1:  # 100KB未満の場合は警告
+                        print(f"警告: 動画ファイルサイズが小さすぎます ({file_size:.2f}MB)")
+                    else:
+                        print(f"動画保存成功: {frame_count}フレーム処理済み")
+                else:
+                    print(f"エラー: 動画ファイルが生成されませんでした: {video_path_out}")
+            elif video_writer:
+                # 初期化に失敗していた場合の処理
+                video_writer.release()
+                print("動画保存: VideoWriterの初期化エラーのためスキップされました")
             if display:
                 cv2.destroyAllWindows()
 
@@ -307,7 +409,11 @@ class ComparisonEvaluator:
         display_w = w // num_methods
         display_h = h
 
-        display_frame = np.zeros((display_h, display_w * num_methods, 3), dtype=np.uint8)
+        # VideoWriterで設定したサイズと正確に一致させる
+        final_width = display_w * num_methods
+        final_height = display_h
+
+        display_frame = np.zeros((final_height, final_width, 3), dtype=np.uint8)
 
         for i, method_name in enumerate(method_names):
             # フレームのコピーとリサイズ
@@ -324,12 +430,22 @@ class ComparisonEvaluator:
                     x2 = int(track.bbox[2] * display_w / w)
                     y2 = int(track.bbox[3] * display_h / h)
 
+                    # 座標の有効性確認
+                    x1 = max(0, min(x1, display_w - 1))
+                    y1 = max(0, min(y1, display_h - 1))
+                    x2 = max(0, min(x2, display_w - 1))
+                    y2 = max(0, min(y2, display_h - 1))
+
+                    # x1 < x2, y1 < y2を確保
+                    if x1 >= x2 or y1 >= y2:
+                        continue
+
                     # 描画
                     cv2.rectangle(method_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     cv2.putText(
                         method_frame,
                         f"ID:{track.track_id}",
-                        (x1, y1 - 10),
+                        (x1, max(10, y1 - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5,
                         (0, 255, 0),
@@ -359,8 +475,26 @@ class ComparisonEvaluator:
                     1,
                 )
 
-            # 表示フレームに配置
-            display_frame[:, i * display_w : (i + 1) * display_w] = method_frame
+            # 表示フレームに配置（範囲確認付き）
+            start_col = i * display_w
+            end_col = (i + 1) * display_w
+            if (
+                end_col <= final_width
+                and method_frame.shape[0] == final_height
+                and method_frame.shape[1] == display_w
+            ):
+                display_frame[:, start_col:end_col] = method_frame
+            else:
+                print(
+                    f"警告: フレーム配置でサイズ不一致 - {method_name}: {method_frame.shape} -> [{start_col}:{end_col}] ({final_height}x{final_width})"
+                )
+
+        # 最終サイズの確認とリサイズ（必要に応じて）
+        if display_frame.shape[:2] != (final_height, final_width):
+            print(
+                f"警告: 表示フレームサイズ調整 {display_frame.shape[:2]} -> ({final_height}, {final_width})"
+            )
+            display_frame = cv2.resize(display_frame, (final_width, final_height))
 
         return display_frame
 
