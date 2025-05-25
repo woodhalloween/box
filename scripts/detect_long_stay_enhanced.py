@@ -16,14 +16,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 # 必要なモジュールのインポート
 import numpy as np
+
+# ByteTrack関連のインポート
 from ultralytics import YOLO
 
 from src.tracking.hybrid_tracker import HybridTracker
 from src.utils.enhanced_visualization import EnhancedVisualizer
-
-# ByteTrack関連のインポート
-sys.path.append(str(Path(__file__).parent.parent / "bytetrack"))
-from bytetrack.yolo_tracker import YOLOTracker
 
 
 def setup_logging(log_level: str = "INFO"):
@@ -183,7 +181,9 @@ def main():
 
         # YOLO + ByteTrackの初期化
         yolo_model = YOLO(args.yolo_model)
-        yolo_tracker = YOLOTracker(model_path=args.yolo_model, conf_thresh=args.confidence)
+        byte_tracker = ByteTrack(
+            track_thresh=args.confidence, track_buffer=30, match_thresh=0.8, frame_rate=25
+        )
 
         # 長時間滞在検出器の初期化
         stay_detector = LongStayDetector(args.stay_threshold, args.move_threshold)
@@ -221,8 +221,20 @@ def main():
             current_time = time.time()
 
             try:
-                # 1. YOLO + ByteTrack による基本追跡
-                basic_tracks = yolo_tracker.update(frame)
+                # 1. YOLO検出とByteTrackによる基本追跡
+                results = yolo_model(frame, verbose=False)
+                detections = []
+                if results[0].boxes is not None:
+                    boxes = results[0].boxes.xyxy.cpu().numpy()
+                    confs = results[0].boxes.conf.cpu().numpy()
+                    classes = results[0].boxes.cls.cpu().numpy()
+
+                    for box, conf, cls in zip(boxes, confs, classes, strict=False):
+                        if conf >= args.confidence and int(cls) == 0:  # person class
+                            detections.append([box[0], box[1], box[2], box[3], conf, cls])
+
+                detections_array = np.array(detections) if detections else np.empty((0, 6))
+                basic_tracks = byte_tracker.update(detections_array, frame)
 
                 # 2. ハイブリッド追跡による強化
                 enhanced_tracks, performance_metrics = hybrid_tracker.process_frame(
