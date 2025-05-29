@@ -317,8 +317,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="yolov8n.pt",  # 修正: yolo11n-pose.pt から yolov8n.pt へ変更の提案（一般的であるため）
-        help="YOLOモデルファイルのパス。 (例: models/yolov8n.pt)",
+        default="yolov11n.pt",  # 修正: yolo11n-pose.pt から yolov8n.pt へ変更の提案（一般的であるため）
+        help="YOLOモデルファイルのパス。 (例: models/yolov11n.pt)",
     )
     parser.add_argument(
         "--enable_perf_log",

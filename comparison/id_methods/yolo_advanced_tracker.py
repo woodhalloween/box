@@ -408,3 +408,4 @@ class YoloAdvancedTracker(BaseTracker):
                 "Memory usage for feature storage",
             ],
         }
+ 
