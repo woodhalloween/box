@@ -54,4 +54,13 @@ ENV/
 
 # Log files
 logs/
-*.log 
+*.log
+log_*.csv
+
+# === Poetry ===
+# Lockファイルは絶対に残す（＝チームの試合オーダー）
+# poetry.lock は .gitignore しない！
+# pyproject.toml と常にペアで管理すること
+
+# === Jupyter Notebooks ===
+.ipynb_checkpoints/
