@@ -1,3 +1,5 @@
+# .github/workflows/python-ci.yml
+
 name: Python CI
 
 on:
@@ -8,54 +10,73 @@ on:
 
 jobs:
   lint:
+    name: Lint with Ruff
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: 1.7.1
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-    - name: Install dependencies
-      run: |
-        poetry install --with dev
-    - name: Lint with Ruff
-      run: |
-        poetry run ruff check .
-    - name: Format check with Ruff
-      run: |
-        poetry run ruff format --check .
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'poetry'
+
+      - name: 📦 Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: 📦 Install dependencies
+        run: poetry install --with dev
+
+      - name: 🔍 Ruff lint
+        run: poetry run ruff check .
+
+      - name: 🎨 Ruff format check
+        run: poetry run ruff format --check .
 
   test:
+    name: Run tests with pytest
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: 1.7.1
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-    - name: Install dependencies
-      run: |
-        poetry install --with dev
-    - name: Test with pytest
-      run: |
-        # テストディレクトリがない場合はスキップするようにメッセージを表示
-        if [ -d "tests" ]; then
-          poetry run pytest
-        else
-          echo "テストディレクトリが存在しません。テストはスキップされます。"
-          echo "テストを追加するには、'tests' ディレクトリを作成し、その中に 'test_*.py' ファイルを追加してください。"
-        fi 
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'poetry'
+
+      - name: 📦 Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: 📦 Install dependencies
+        run: poetry install --with dev
+
+      - name: 🧪 Collect test metadata (check import errors)
+        run: |
+          if [ -d "tests" ]; then
+            poetry run pytest --collect-only
+          else
+            echo "✅ No tests to collect: 'tests/' directory not found."
+          fi
+
+      - name: 🧪 Run pytest
+        run: |
+          if [ -d "tests" ]; then
+            poetry run pytest
+          else
+            echo "✅ No tests to run: 'tests/' directory not found."
+          fi
