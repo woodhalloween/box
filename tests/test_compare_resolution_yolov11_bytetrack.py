@@ -19,7 +19,7 @@ import pytest
 
 # テスト対象のモジュールをインポートできるようにパスを追加
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.compare_resolution_yolov11_bytetrack import (
+from bytetrack.compare_resolution_yolov11_bytetrack import (
     DetectionResults,
     draw_tracking_info,
     get_system_info,
@@ -263,7 +263,7 @@ class TestComplexFunctions:
         mock_vid_cap,
     ):
         """process_video関数の基本的なテスト"""
-        from scripts.compare_resolution_yolov11_bytetrack import process_video
+        from bytetrack.compare_resolution_yolov11_bytetrack import process_video
 
         # VideoCapture設定
         mock_vid_cap.return_value.isOpened.return_value = True
@@ -322,7 +322,7 @@ class TestComplexFunctions:
         mock_makedirs,
     ):
         """compare_resolutions関数の基本的なテスト"""
-        from scripts.compare_resolution_yolov11_bytetrack import compare_resolutions
+        from bytetrack.compare_resolution_yolov11_bytetrack import compare_resolutions
 
         # VideoCapture設定
         mock_vid_cap.return_value.isOpened.return_value = True

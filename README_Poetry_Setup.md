@@ -2,7 +2,7 @@
 
 ---
 
-## ❖ ENGLISH VERSION: "Don't solve the setup. Win it."
+## ❖ "Don't solve the setup. Win it."
 
 ### 1. Install Poetry
 
@@ -120,129 +120,90 @@ No excuses. Set it.
 
 ---
 
-## ❖ 日本語版：「設定の問題？それ、勝つことで消してるから。」
+## ❖ When Updating Package Versions
 
-### 1. Poetry を叩き込む
+### ✅ Step-by-step:
 
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
-```
-
-これすら通らないなら、  
-――ピッチに立つ資格なし。
-
-シェルにこの一行を入れろ：
-
-- Zsh の場合：
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-- Bash の場合：
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
-source ~/.bash_profile
-```
-
-確認：
+1. **Regenerate the lock file completely:**
 
 ```bash
-poetry --version
+poetry lock --no-cache --no-update --check
+# ↑ preview only (optional)
+
+poetry lock --no-cache --no-update --regenerate
 ```
 
-→ 表示されない？それ、敗北。終わり。
-
----
-
-### 2. 仮想環境は“この場”で完結させろ
-
-> 「ベンチは共有しない。私たちは、“ボックスの中”で一人で戦う。」
-
-```bash
-poetry config virtualenvs.in-project true
-```
-
-このプロジェクトだけで完結させたいなら：
-
-```bash
-poetry config --local virtualenvs.in-project true
-```
-
-過去の依存？  
-邪魔。消せ。
-
-```bash
-poetry env remove python
-```
-
----
-
-### 3. ピッチを定義しろ
-
-```bash
-poetry init
-# もしくは
-poetry init --no-interaction
-```
-
-> 「最初から“構成”を描け。プレイはその後。」
-
----
-
-### 4. ロックせよ。迷うな。
-
-```bash
-poetry lock
-```
-
-> 「迷ってる暇はない。勝つ前提でロックしろ。」
-
----
-
-### 5. スカッドを並べろ
+2. **Install freshly with new lock:**
 
 ```bash
 poetry install
 ```
 
-ここまでで初めて、「戦える陣形」になる。
+---
+
+## ❖ Run Coverage with Poetry
+
+### ✅ Run like this:
+
+```bash
+poetry run coverage erase && poetry run pytest -v --cov=src --cov-report=html tests/
+```
+
+This does:
+
+- Erase old coverage data (no carry-overs from past matches)
+- Run all tests in `tests/` directory
+- Measure coverage for `src/`
+- Output a visual report in `htmlcov/`
+
+To open the coverage result:
+
+```bash
+open htmlcov/index.html  # macOS
+# or
+xdg-open htmlcov/index.html  # Linux
+```
 
 ---
 
-### 6. requirements-dev.txt から仲間を引き入れろ
+## ❖ Handling Platform-Specific Dependencies (e.g., `jaxlib`)
 
-```bash
-poetry add --group dev $(< requirements-dev.txt)
+> Define your battlefield. Target your architecture. Victory starts with clarity.
+
+### ✅ Installing `jaxlib` for x86_64 Only:
+
+Add below to `pyproject.toml`:
+
+```toml
+[tool.poetry.group.experimental.dependencies]
+jax = { version = "0.4.23", markers = "platform_machine == 'x86_64'" }
 ```
 
-構成が変わったら、再ロック。
+Reconstruction of the poetry virtual env:
 
 ```bash
-poetry lock
-poetry install
+rm poetry.lock
+poetry lock --no-cache --regenerate
+poetry install --with experimental
 ```
+
+> When restricting jaxlib to x86_64 architectures, make your intention explicit. This avoids unnecessary conflicts on Apple Silicon or ARM environments. 
 
 ---
 
-### 7. 仮想環境の“居場所”を確認
+## 🔁 Regenerate Poetry Lock (For Poetry 2.1.3)
+
+To regenerate poetry.lock based on your current pyproject.toml:
 
 ```bash
-poetry env info --path
+rm poetry.lock
+poetry lock --no-cache
 ```
 
-出力がこうなってなければ負け：
+**Note:**
+- The `--check` and `--no-update` options are not available in Poetry 2.1.3.
+- The `--no-cache` flag forces Poetry to bypass cache and resolve dependencies using fresh metadata.
 
-```
-./.venv
-```
-
-> 「私は、この場でしか撃たない。」
+> In other words — when in doubt, rebuild with full awareness of your environment.
 
 ---
-
-### 8. PyCharmの同期
-
-`.venv/bin/python` をインタープリタに設定。  
-やれ。以上。  
-できないなら、スタメン落ち。
