@@ -92,7 +92,7 @@ exclude = [
 ]
 
 [tool.poetry.scripts]
-format = "bash -c 'ruff format .'"
+format = "bash -c 'ruff format src scripts bytetracks tests'"
 
 # インポートの整理に関する設定
 [tool.ruff.lint.isort]

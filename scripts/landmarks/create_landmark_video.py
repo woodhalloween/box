@@ -9,11 +9,11 @@ import os
 
 import cv2
 import mediapipe as mp
+from absl import logging as absl_logging
 
 # C++側（glog）とTensorFlow/Mediapipeのログを抑制
 os.environ["GLOG_MINLOGLEVEL"] = "2"  # INFO以下を隐藏
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # TensorFlowのINFO/WARNINGを抑制
-from absl import logging as absl_logging
 
 # abslライブラリの標準エラー出力を無効化し、ログレベルをERRORに設定
 # これにより、MediapipeやTensorFlowが出力する大量のINFOレベルのログを抑制
