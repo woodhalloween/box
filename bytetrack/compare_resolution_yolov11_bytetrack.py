@@ -216,7 +216,6 @@ def process_video(
 
     try:
         while True:
-            frame_start_time = time.time()
             ret, frame_bgr = cap.read()
             if not ret:
                 break

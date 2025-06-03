@@ -113,8 +113,12 @@ class StickFigureDetector:
             # 正規化座標から画像座標に変換
             frame_height, frame_width = frame.shape[:2]
             nose_x, nose_y = int(nose.x * frame_width), int(nose.y * frame_height)
-            left_ear_x, left_ear_y = int(left_ear.x * frame_width), int(left_ear.y * frame_height)
-            right_ear_x, right_ear_y = int(right_ear.x * frame_width), int(right_ear.y * frame_height)
+            left_ear_x, left_ear_y = (
+                int(left_ear.x * frame_width), int(left_ear.y * frame_height)
+            )
+            right_ear_x, right_ear_y = (
+                int(right_ear.x * frame_width), int(right_ear.y * frame_height)
+            )
             
             # 頭部の中心位置を計算（鼻と両耳の中心）
             head_x = (nose_x + (left_ear_x + right_ear_x) / 2) / 2
@@ -134,8 +138,13 @@ class StickFigureDetector:
                 turning_detected = self._detect_head_turning(frame_width)
                 
                 # 首振り状態の更新
-                head_turning, event_started, event_ended, event_duration = self._update_turning_state(
-                    turning_detected, frame_idx, time.time())
+                head_turning, event_started, event_ended, event_duration = (
+                    self._update_turning_state(
+                        turning_detected,
+                        frame_idx,
+                        time.time()
+                    )
+                )
                 
                 # ログデータの記録
                 self.log_data.append({
@@ -159,17 +168,38 @@ class StickFigureDetector:
             
             # 首振り検出時の表示
             if head_turning:
-                cv2.putText(annotated_frame, "Head Turning Detected!", 
-                           (frame_width // 2 - 180, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+                cv2.putText(
+                    annotated_frame,
+                    "Head Turning Detected!",
+                    (frame_width // 2 - 180, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    (0, 0, 255),
+                    3
+                )
                 # 赤い枠を描画
-                cv2.rectangle(annotated_frame, (0, 0), (frame_width-1, frame.shape[0]-1), (0, 0, 255), 5)
+                cv2.rectangle(
+                    annotated_frame,
+                    (0, 0),
+                    (frame_width - 1, frame.shape[0] - 1),
+                    (0, 0, 255),
+                    5
+                )
             
             # 頭部の軌跡を描画
             if len(self.head_positions) > 1:
-                pts = np.array([[int(p[0]), int(p[1])] for p in self.head_positions], np.int32)
+                pts = np.array(
+                    [[int(p[0]), int(p[1])] for p in self.head_positions],
+                    np.int32
+                )
                 pts = pts.reshape((-1, 1, 2))
-                cv2.polylines(annotated_frame, [pts], False, (255, 0, 0), 2)
+                cv2.polylines(
+                    annotated_frame,
+                    [pts],
+                    False,
+                    (255, 0, 0),
+                    2
+                )
                 
             return head_detected, landmarks, annotated_frame, head_turning
         
@@ -224,13 +254,18 @@ class StickFigureDetector:
                 prev_direction = current_direction
         
         # 2. 有意な動きの数をカウント
-        significant_movements = sum(1 for m in recent_movements if abs(m) > self.movement_threshold)
+        significant_movements = (
+            sum(1 for m in recent_movements if abs(m) > self.movement_threshold)
+        )
         
         # 3. 最大移動量
         max_movement = max(abs(m) for m in recent_movements) if recent_movements else 0
-        
+
         # 動きカウントを更新
-        if (significant_movements >= 2 and direction_changes >= 1) or max_movement > self.movement_threshold * 2:
+        if (
+                (significant_movements >= 2 and direction_changes >= 1)
+                or max_movement > self.movement_threshold * 2
+        ):
             self.current_movement_count += 1
         else:
             # 動きがなければカウントをリセット（ただしある程度維持）
@@ -320,7 +355,13 @@ class StickFigureDetector:
         self.pose.close()
 
 
-def process_video(video_path, output_path=None, show_preview=True, log_dir="logs", detector=None):
+def process_video(
+        video_path,
+        output_path=None,
+        show_preview=True,
+        log_dir="logs",
+        detector=None
+):
     """
     ビデオを処理し、骨格を検出して首振りを検知する
     Args:
@@ -346,7 +387,12 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     # 出力ビデオの設定
     if output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
+        out = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*'mp4v'),
+            fps,
+            (frame_width, frame_height)
+        )
     
     frame_count = 0
     total_processing_time = 0
@@ -366,7 +412,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
             
             # 骨格検出の実行
             start_time = time.time()
-            head_detected, landmarks, display_frame, head_turning = detector.detect_pose(frame, frame_count - 1, show_preview)
+            head_detected, landmarks, display_frame, head_turning = (
+                detector.detect_pose(frame, frame_count - 1, show_preview)
+            )
             processing_time = (time.time() - start_time) * 1000
             
             # 処理時間の記録
@@ -383,14 +431,23 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
                 # 首振りイベントの終了
                 current_turning_event['end_frame'] = frame_count - 1
                 current_turning_event['end_time'] = time.time()
-                current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+                current_turning_event['duration'] = (
+                        current_turning_event['end_time'] - current_turning_event['start_time']
+                )
                 turning_events.append(current_turning_event)
                 current_turning_event = None
             
             # 平均処理時間と要件（500ms以内）の達成状況を表示
             avg_time = total_processing_time / frame_count
-            cv2.putText(display_frame, f"Avg: {avg_time:.1f}ms (Target: 500ms)", (10, frame_height - 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0) if avg_time <= 500 else (0, 0, 255), 2)
+            cv2.putText(
+                display_frame,
+                f"Avg: {avg_time:.1f}ms (Target: 500ms)",
+                (10, frame_height - 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0) if avg_time <= 500 else (0, 0, 255),
+                2
+            )
             
             # 出力ビデオに書き込み
             if output_path:
@@ -409,7 +466,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
         if current_turning_event is not None:
             current_turning_event['end_frame'] = frame_count
             current_turning_event['end_time'] = time.time()
-            current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+            current_turning_event['duration'] = (
+                    current_turning_event['end_time'] - current_turning_event['start_time']
+            )
             turning_events.append(current_turning_event)
         
         # リソースの解放
@@ -423,7 +482,10 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     print(f"処理したフレーム数: {frame_count}")
     print(f"平均処理時間: {total_processing_time / frame_count:.2f}ms")
     print(f"最大処理時間: {max_processing_time:.2f}ms")
-    print(f"目標時間（500ms）内: {'達成' if total_processing_time / frame_count <= 500 else '未達成'}")
+    print(
+        f"目標時間（500ms）内: "
+        f"{'達成' if total_processing_time / frame_count <= 500 else '未達成'}"
+    )
     
     # 首振りイベントの情報を表示
     print(f"\n検出された首振りイベント数: {len(turning_events)}")
@@ -437,17 +499,26 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     
     # ログを保存
     os.makedirs(log_dir, exist_ok=True)
-    log_filename = os.path.join(log_dir, f"stick_figure_log_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    log_filename = os.path.join(
+        log_dir,
+        f"stick_figure_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    )
     detector.save_logs(log_filename)
     
     # 首振りイベントのログも保存
     if turning_events:
         events_df = pd.DataFrame(turning_events)
-        events_log_filename = os.path.join(log_dir, f"stick_figure_events_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+        events_log_filename = os.path.join(
+            log_dir,
+            f"stick_figure_events_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        )
         events_df.to_csv(events_log_filename, index=False)
     
     # 骨格データのログも保存
-    skeleton_log_filename = os.path.join(log_dir, f"skeleton_data_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    skeleton_log_filename = os.path.join(
+        log_dir,
+        f"skeleton_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    )
     detector.save_skeleton_logs(skeleton_log_filename)
     
     return detector.log_data

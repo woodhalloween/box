@@ -13,7 +13,13 @@ class HeadPoseDetector:
     頭部姿勢検出クラス
     MediaPipeのFaceMeshを使用して顔のランドマークを検出し、頭部の姿勢（特にyaw角）を推定
     """
-    def __init__(self, max_history=40, yaw_threshold=10, consecutive_frames=2, detection_cooldown=1.0):
+    def __init__(
+            self,
+            max_history=40,
+            yaw_threshold=10,
+            consecutive_frames=2,
+            detection_cooldown=1.0
+    ):
         """
         初期化
         Args:
@@ -63,13 +69,25 @@ class HeadPoseDetector:
             
             # 顔の主要なランドマークを取得
             nose = np.array(
-                [face_landmarks.landmark[1].x, face_landmarks.landmark[1].y, face_landmarks.landmark[1].z]
+                [
+                    face_landmarks.landmark[1].x,
+                    face_landmarks.landmark[1].y,
+                    face_landmarks.landmark[1].z
+                ]
             )
             left_eye = np.array(
-                [face_landmarks.landmark[33].x, face_landmarks.landmark[33].y, face_landmarks.landmark[33].z]
+                [
+                    face_landmarks.landmark[33].x,
+                    face_landmarks.landmark[33].y,
+                    face_landmarks.landmark[33].z
+                ]
             )
             right_eye = np.array(
-                [face_landmarks.landmark[263].x, face_landmarks.landmark[263].y, face_landmarks.landmark[263].z]
+                [
+                    face_landmarks.landmark[263].x,
+                    face_landmarks.landmark[263].y,
+                    face_landmarks.landmark[263].z
+                ]
             )
             
             # yaw角（左右の回転）を計算
@@ -183,11 +201,8 @@ class HeadPoseDetector:
             precision = self.true_positives / (self.true_positives + self.false_positives)
             
         recall = self.true_positives / self.total_events
-        
-        if precision + recall == 0:
-            f1_score = 0
-        else:
-            f1_score = 2 * (precision * recall) / (precision + recall)
+
+        f1_score = 0 if precision + recall == 0 else 2 * (precision * recall) / (precision + recall)
             
         return {
             "precision": precision * 100,
@@ -200,7 +215,13 @@ class HeadPoseDetector:
         self.face_mesh.close()
 
 
-def process_video(video_path, output_path=None, show_preview=True, log_dir="logs", detector=None):
+def process_video(
+        video_path,
+        output_path=None,
+        show_preview=True,
+        log_dir="logs",
+        detector=None
+):
     """
     ビデオを処理し、頭部姿勢を検出する
     Args:
@@ -227,7 +248,12 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     # 出力ビデオの設定
     if output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
+        out = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*'mp4v'),
+            fps,
+            (frame_width, frame_height)
+        )
     
     frame_count = 0
     total_processing_time = 0

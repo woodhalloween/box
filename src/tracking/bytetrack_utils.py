@@ -177,7 +177,7 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
         log_type: ログタイプ ("generic", "long_stay", "fps", "resolution")
     """
     if not enable_perf_log:
-        return None, None, None
+        return None
 
     system_info = get_system_info()
     timestamp_log = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -185,60 +185,43 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
     input_stem = Path(input_file).stem
     model_stem = Path(model_path).stem
 
-    # outputディレクトリの作成
     output_dir = Path("output/logs")
     output_dir.mkdir(parents=True, exist_ok=True)
     perf_log_file = output_dir / f"log_{input_stem}_{log_type}_{model_stem}_{timestamp_log}.csv"
 
     perf_columns = [
-        "Frame",
-        "Time",
-        "Detection_Time_ms",
-        "Tracking_Time_ms",
-        "Total_Time_ms",
-        "Objects_Detected",
-        "Objects_Tracked",
-        "FPS",
-        "Memory_MB",
-        "Model",
-        "Tracker",
-        "Notes",
+        "Frame", "Time", "Detection_Time_ms", "Tracking_Time_ms", "Total_Time_ms",
+        "Objects_Detected", "Objects_Tracked", "FPS", "Memory_MB", "Model", "Tracker", "Notes"
     ]
-
-    # long_stay用に追加カラム
     if log_type == "long_stay":
         perf_columns.insert(4, "Stay_Check_Time_ms")
 
-    perf_log_f = None  # Initialize perf_log_f
     try:
-        # with open(perf_log_file, "w", newline="") as perf_log_f:
-        perf_log_f = open(perf_log_file, "w", newline="")
-        perf_log_writer = csv.writer(perf_log_f)
-        perf_log_writer.writerow(["# System Information"])
-        perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
-        perf_log_writer.writerow(["# Python", system_info["python_version"]])
-        perf_log_writer.writerow(
-            [
+        with open(perf_log_file, "w", newline="") as perf_log_f:
+            perf_log_writer = csv.writer(perf_log_f)
+            perf_log_writer.writerow(["# System Information"])
+            perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
+            perf_log_writer.writerow(["# Python", system_info["python_version"]])
+            perf_log_writer.writerow([
                 "# CPU",
                 system_info["cpu"],
-                f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
-            ]
-        )
-        perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(["# YOLO Model", model_path])
-        perf_log_writer.writerow(["# Tracker", "bytetrack"])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(["# Video", input_file])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(perf_columns)
+                f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads"
+            ])
+            perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(["# YOLO Model", model_path])
+            perf_log_writer.writerow(["# Tracker", "bytetrack"])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(["# Video", input_file])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(perf_columns)
+
         print(f"パフォーマンスログ: 有効 ({perf_log_file})")
-        return str(perf_log_file), perf_log_f, perf_log_writer  # Return path as string
+        return str(perf_log_file)  # Only return path
+
     except OSError as e:
         print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
-        if perf_log_f:
-            perf_log_f.close()  # Close if an error occurs after opening
-        return None, None, None
+        return None
 
 
 def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec):

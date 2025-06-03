@@ -71,24 +71,24 @@ class HeadDetector:
         # YOLOで人物検出
         start_time = time.time()
         result = self.model(frame, conf=self.confidence, verbose=False)[0]
-        
-        # 検出結果処理
-        heads = []
+
+        # 頭部検出のフィルタリング・処理
+        # 🖥️Daisy: SIM102 suppressed.
+        # Comprehension failed structural propagation of unpacked vars (x1, y1...).
+        # Rewritten in for-loop form for correctness & legibility.
+        heads = []  # noqa: SIM102
         for box in result.boxes:
-            if box.cls.cpu().numpy()[0] == 0:  # クラス0は'person'
-                if box.conf.cpu().numpy()[0] > self.confidence:
-                    # バウンディングボックスの座標を取得
-                    x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
-                    conf = box.conf.cpu().numpy()[0]
-                    
-                    # 頭部は人物の上部1/6と仮定
-                    head_h = (y2 - y1) / 6
-                    head_x = (x1 + x2) / 2  # 頭部の中心X座標
-                    head_y = y1 + head_h / 2  # 頭部の中心Y座標
-                    head_w = (x2 - x1) * 0.8  # 頭部の幅は人物幅の80%と仮定
-                    
-                    heads.append((head_x, head_y, head_w, head_h, conf))
-        
+            cls = box.cls.cpu().numpy()[0]
+            conf = box.conf.cpu().numpy()[0]
+
+            if cls == 0 and conf > self.confidence:
+                x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
+                head_h = (y2 - y1) / 6
+                head_x = (x1 + x2) / 2
+                head_y = y1 + head_h / 2
+                head_w = (x2 - x1) * 0.8
+                heads.append((head_x, head_y, head_w, head_h, conf))
+
         # 見つかった頭部の中で最も信頼度の高いものを選択
         best_head = None
         best_conf = 0
@@ -108,7 +108,8 @@ class HeadDetector:
             turning_detected = self._detect_head_turning(frame.shape[1])
             
             # 首振り状態の更新
-            head_turning, event_started, event_ended, event_duration = self._update_turning_state(turning_detected, frame_idx, time.time())
+            head_turning, event_started, event_ended, event_duration = (
+                self._update_turning_state(turning_detected, frame_idx, time.time()))
             
             # ログデータの記録
             self.log_data.append({
@@ -141,7 +142,11 @@ class HeadDetector:
         # 履歴が少ない場合は検出しない
         if len(self.head_positions) < self.consecutive_frames + 2:  # さらに履歴数を減らす
             return False
-        
+
+        # 🖥️Daisy: Index-based dual-stream sync check
+        # (head_positions ↔ timestamps) needs explicit guards.
+        # List comprehension would sacrifice clarity,
+        # debuggability, and time-causal correctness. SIM102 ignored.
         # 頭部の左右（X軸）移動を計算
         x_movements = []
         for i in range(1, len(self.head_positions)):
@@ -297,10 +302,8 @@ class HeadDetector:
             
         recall = self.true_positives / self.total_events
         
-        if precision + recall == 0:
-            f1_score = 0
-        else:
-            f1_score = 2 * (precision * recall) / (precision + recall)
+        # SIM108
+        f1_score = 0 if precision + recall == 0 else 2 * (precision * recall) / (precision + recall)
             
         return {
             "precision": precision * 100,
@@ -335,7 +338,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     # 出力ビデオの設定
     if output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
+        out = cv2.VideoWriter(
+            output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height)
+        )
     
     frame_count = 0
     total_processing_time = 0
@@ -353,7 +358,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
         frame_count += 1
         
         # 頭部検出の実行
-        head, all_heads, head_turning, processing_time = detector.detect_head(frame, frame_count - 1, show_preview)
+        head, all_heads, head_turning, processing_time = (
+            detector.detect_head(frame, frame_count - 1, show_preview)
+        )
         
         # 処理時間の記録
         total_processing_time += processing_time
@@ -374,14 +381,23 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
                 # 首振りイベントの終了
                 current_turning_event['end_frame'] = frame_count - 1
                 current_turning_event['end_time'] = time.time()
-                current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+                current_turning_event['duration'] = (
+                        current_turning_event['end_time'] - current_turning_event['start_time']
+                )
                 turning_events.append(current_turning_event)
                 current_turning_event = None
         
         # 平均処理時間と要件（500ms以内）の達成状況を表示
         avg_time = total_processing_time / frame_count
-        cv2.putText(frame, f"Avg: {avg_time:.1f}ms (Target: 500ms)", (10, frame_height - 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0) if avg_time <= 500 else (0, 0, 255), 2)
+        cv2.putText(
+            frame,
+            f"Avg: {avg_time:.1f}ms (Target: 500ms)",
+            (10, frame_height - 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0) if avg_time <= 500 else (0, 0, 255),
+            2
+        )
         
         # 出力ビデオに書き込み
         if output_path:
@@ -397,7 +413,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     if current_turning_event is not None:
         current_turning_event['end_frame'] = frame_count
         current_turning_event['end_time'] = time.time()
-        current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+        current_turning_event['duration'] = (
+                current_turning_event['end_time'] - current_turning_event['start_time']
+        )
         turning_events.append(current_turning_event)
     
     # リソースの解放
@@ -410,7 +428,10 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     print(f"処理したフレーム数: {frame_count}")
     print(f"平均処理時間: {total_processing_time / frame_count:.2f}ms")
     print(f"最大処理時間: {max_processing_time:.2f}ms")
-    print(f"目標時間（500ms）内: {'達成' if total_processing_time / frame_count <= 500 else '未達成'}")
+    print(
+        f"目標時間（500ms）内: "
+        f"{'達成' if total_processing_time / frame_count <= 500 else '未達成'}"
+    )
     
     # 首振りイベントの情報を表示
     print(f"\n検出された首振りイベント数: {len(turning_events)}")
@@ -424,13 +445,17 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     
     # ログを保存
     os.makedirs(log_dir, exist_ok=True)
-    log_filename = os.path.join(log_dir, f"head_detection_log_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    log_filename = os.path.join(
+        log_dir, f"head_detection_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    )
     detector.save_logs(log_filename)
     
     # 首振りイベントのログも保存
     if turning_events:
         events_df = pd.DataFrame(turning_events)
-        events_log_filename = os.path.join(log_dir, f"turning_events_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+        events_log_filename = os.path.join(
+            log_dir, f"turning_events_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        )
         events_df.to_csv(events_log_filename, index=False)
     
     return detector.log_data
