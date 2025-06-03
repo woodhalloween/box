@@ -221,7 +221,7 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
 
     except OSError as e:
         print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
-        return None
+        return None,
 
 
 def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec):
