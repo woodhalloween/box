@@ -62,7 +62,7 @@ def test_initialize_perf_log_disabled(tmp_path):
 def test_initialize_perf_log_file_creation_error(mocker):
     # Patch get_system_info to avoid psutil usage (prevent collateral errors)
     mocker.patch(
-        "tracking.bytetrack_utils.get_system_info",
+        "src.tracking.bytetrack_utils.get_system_info",
         return_value={
             "os": "Linux",
             "os_version": "5.10",
