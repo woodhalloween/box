@@ -7,6 +7,7 @@ import mediapipe as mp
 import numpy as np
 import pandas as pd
 
+
 class StickFigureDetector:
     """
     MediaPipeを使用した棒人間モデル検出クラス

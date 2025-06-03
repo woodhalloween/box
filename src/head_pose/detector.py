@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import savgol_filter
 
+
 class HeadPoseDetector:
     """
     頭部姿勢検出クラス
