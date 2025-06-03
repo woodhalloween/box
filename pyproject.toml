@@ -13,6 +13,8 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
+# 🚧 pkg_resources used by boxmot; setuptools <81 needed until migrated
+setuptools = ">=78.1.1,<81.0.0"
 
 [tool.poetry.group.tracking.dependencies]
 boxmot = ">=12.0.1,<13.0.0"

@@ -139,7 +139,7 @@ class TestLogFile:
     """ログファイル関連の関数のテスト"""
 
     @patch("builtins.open", new_callable=mock_open)
-    @patch("scripts.compare_resolution_yolov11_bytetrack.get_system_info")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.get_system_info")
     def test_initialize_log_file(self, mock_get_info, mock_file, mock_system_info):
         """initialize_log_file関数のテスト"""
         mock_get_info.return_value = mock_system_info
@@ -245,13 +245,13 @@ class TestTracking:
 class TestComplexFunctions:
     """より複雑な関数のモックテスト"""
 
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoWriter")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.cvtColor")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.process_frame_for_tracking")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.draw_tracking_info")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.time.time")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.psutil.Process")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoWriter")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.cvtColor")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.process_frame_for_tracking")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.draw_tracking_info")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.time.time")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.psutil.Process")
     def test_process_video_basic(
         self,
         mock_process,
@@ -304,13 +304,13 @@ class TestComplexFunctions:
         mock_vid_cap.return_value.release.assert_called_once()
         mock_vid_writer.return_value.release.assert_called_once()
 
-    @patch("scripts.compare_resolution_yolov11_bytetrack.os.makedirs")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.os.path.join")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.initialize_log_file")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.YOLO")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.ByteTrack")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.process_video")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.os.makedirs")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.os.path.join")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.initialize_log_file")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.YOLO")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.ByteTrack")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.process_video")
     def test_compare_resolutions_basic(
         self,
         mock_process_video,
