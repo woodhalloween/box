@@ -64,3 +64,9 @@ log_*.csv
 
 # === Jupyter Notebooks ===
 .ipynb_checkpoints/
+
+# Coverage data
+.coverage
+htmlcov/
+coverage.xml
+tests/**/.coverage
