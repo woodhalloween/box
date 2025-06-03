@@ -141,15 +141,28 @@ def draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
             label = f"ID:{track_id} 滞在:{stay_duration:.1f}s 高さ:{person_height}px"
 
             # 長時間滞在の場合は色を変える
-            if stay_duration >= 4.0:  # デフォルトのしきい値
-                color = (0, 0, 255)  # 赤色
-            else:
-                color = (0, 255, 0)  # 緑色
+            color = (0, 0, 255) if stay_duration >= 4.0 else (0, 255, 0)
 
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2
+            )
         else:
             label = f"ID: {track_id}"
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2
+            )
 
     return frame
 
@@ -294,7 +307,12 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
 
             # 閾値も正規化
             # dynamic_move_threshold = move_threshold_px / normalization_factor
-            # print(f"ID:{track_id}, dist_norm:{dist_moved_normalized:.2f}, thresh_norm:{dynamic_move_threshold:.2f}, factor:{normalization_factor:.2f}, height:{person_height}")
+            # print(
+            #     f"ID:{track_id}, dist_norm:{dist_moved_normalized:.2f}, "
+            #     f"thresh_norm:{dynamic_move_threshold:.2f}, "
+            #     f"factor:{normalization_factor:.2f}, "
+            #     f"height:{person_height}"
+            # )
 
             if dist_moved_normalized < move_threshold_px:  # 正規化後の閾値と比較
                 stay_info[track_id]["stay_duration"] += time_diff

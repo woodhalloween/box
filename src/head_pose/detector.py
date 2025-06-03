@@ -1,11 +1,12 @@
+import os
+import time
+from collections import deque
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import time
-from collections import deque
-from scipy.signal import savgol_filter
 import pandas as pd
-import os
+from scipy.signal import savgol_filter
 
 class HeadPoseDetector:
     """
@@ -61,9 +62,15 @@ class HeadPoseDetector:
             face_landmarks = results.multi_face_landmarks[0]
             
             # 顔の主要なランドマークを取得
-            nose = np.array([face_landmarks.landmark[1].x, face_landmarks.landmark[1].y, face_landmarks.landmark[1].z])
-            left_eye = np.array([face_landmarks.landmark[33].x, face_landmarks.landmark[33].y, face_landmarks.landmark[33].z])
-            right_eye = np.array([face_landmarks.landmark[263].x, face_landmarks.landmark[263].y, face_landmarks.landmark[263].z])
+            nose = np.array(
+                [face_landmarks.landmark[1].x, face_landmarks.landmark[1].y, face_landmarks.landmark[1].z]
+            )
+            left_eye = np.array(
+                [face_landmarks.landmark[33].x, face_landmarks.landmark[33].y, face_landmarks.landmark[33].z]
+            )
+            right_eye = np.array(
+                [face_landmarks.landmark[263].x, face_landmarks.landmark[263].y, face_landmarks.landmark[263].z]
+            )
             
             # yaw角（左右の回転）を計算
             eye_center = (left_eye + right_eye) / 2
@@ -127,12 +134,16 @@ class HeadPoseDetector:
                 
                 # より高度な首振り検出ロジック
                 # 1. 連続した閾値超えを検出
-                num_significant_changes = sum(1 for v in yaw_velocity[-self.consecutive_frames-2:-2] if abs(v) > self.yaw_threshold)
+                num_significant_changes = (
+                    sum(1 for v in yaw_velocity[-self.consecutive_frames-2:-2]
+                        if abs(v) > self.yaw_threshold)
+                )
                 
                 # 2. 方向の変化も検出（左右の振り）
                 sign_changes = 0
                 for i in range(1, len(yaw_velocity)):
-                    if (yaw_velocity[i-1] > 0 and yaw_velocity[i] < 0) or (yaw_velocity[i-1] < 0 and yaw_velocity[i] > 0):
+                    if ((yaw_velocity[i-1] > 0 and yaw_velocity[i] < 0)
+                            or (yaw_velocity[i-1] < 0 and yaw_velocity[i] > 0)):
                         sign_changes += 1
                 
                 # 必要条件: 十分な数の大きな変化と方向転換の両方が必要
@@ -242,8 +253,24 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
         
         if success:
             # 結果を画面に表示
-            cv2.putText(frame, f"Yaw: {yaw:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(frame, f"Time: {processing_time:.1f}ms", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                f"Yaw: {yaw:.1f}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+            cv2.putText(
+                frame,
+                f"Time: {processing_time:.1f}ms",
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
             
             # 首振り検出の表示を強化
             if head_turning:
@@ -263,14 +290,22 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
                 # 首振りイベントの終了
                 current_turning_event['end_frame'] = frame_count - 1
                 current_turning_event['end_time'] = time.time()
-                current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+                current_turning_event['duration'] = (
+                        current_turning_event['end_time'] - current_turning_event['start_time']
+                )
                 turning_events.append(current_turning_event)
                 current_turning_event = None
         
         # 平均処理時間と要件（500ms以内）の達成状況を表示
         avg_time = total_processing_time / frame_count
-        cv2.putText(frame, f"Avg: {avg_time:.1f}ms (Target: 500ms)", (10, frame_height - 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0) if avg_time <= 500 else (0, 0, 255), 2)
+        cv2.putText(
+            frame,
+            f"Avg: {avg_time:.1f}ms (Target: 500ms)",
+            (10, frame_height - 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7, (0, 255, 0) if avg_time <= 500 else (0, 0, 255),
+            2
+        )
         
         # 出力ビデオに書き込み
         if output_path:
@@ -286,7 +321,9 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     if current_turning_event is not None:
         current_turning_event['end_frame'] = frame_count
         current_turning_event['end_time'] = time.time()
-        current_turning_event['duration'] = current_turning_event['end_time'] - current_turning_event['start_time']
+        current_turning_event['duration'] = (
+                current_turning_event['end_time'] - current_turning_event['start_time']
+        )
         turning_events.append(current_turning_event)
     
     # リソースの解放
@@ -299,7 +336,10 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     print(f"処理したフレーム数: {frame_count}")
     print(f"平均処理時間: {total_processing_time / frame_count:.2f}ms")
     print(f"最大処理時間: {max_processing_time:.2f}ms")
-    print(f"目標時間（500ms）内: {'達成' if total_processing_time / frame_count <= 500 else '未達成'}")
+    print(
+        f"目標時間（500ms）内: "
+        f"{'達成' if total_processing_time / frame_count <= 500 else '未達成'}"
+    )
     
     # 首振りイベントの情報を表示
     print(f"\n検出された首振りイベント数: {len(turning_events)}")
@@ -313,13 +353,19 @@ def process_video(video_path, output_path=None, show_preview=True, log_dir="logs
     
     # ログを保存
     os.makedirs(log_dir, exist_ok=True)
-    log_filename = os.path.join(log_dir, f"head_pose_detection_log_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+    log_filename = os.path.join(
+        log_dir,
+        f"head_pose_detection_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    )
     detector.save_logs(log_filename)
     
     # 首振りイベントのログも保存
     if turning_events:
         events_df = pd.DataFrame(turning_events)
-        events_log_filename = os.path.join(log_dir, f"turning_events_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+        events_log_filename = os.path.join(
+            log_dir,
+            f"turning_events_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        )
         events_df.to_csv(events_log_filename, index=False)
     
     return detector.log_data

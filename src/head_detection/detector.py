@@ -1,10 +1,12 @@
+import os
+import time
+from collections import deque
+
 import cv2
 import numpy as np
-import time
-import os
 import pandas as pd
-from collections import deque
 from ultralytics import YOLO
+
 
 class HeadDetector:
     """

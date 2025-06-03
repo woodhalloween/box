@@ -1,10 +1,11 @@
-import cv2
-import numpy as np
-import time
 import os
-import pandas as pd
+import time
 from collections import deque
+
+import cv2
 import mediapipe as mp
+import numpy as np
+import pandas as pd
 
 class StickFigureDetector:
     """
