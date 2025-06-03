@@ -58,20 +58,18 @@ def test_initialize_perf_log_disabled(tmp_path):
     assert perf_log_file is None
 
 
-def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
+def test_initialize_perf_log_file_creation_error(mocker, tmp_path):
     """Tests that initialize_perf_log handles file creation failure gracefully."""
 
-    # Setup: simulate open() raising OSError
-    def mock_open(*args, **kwargs):
-        raise OSError("Test error: Cannot open file")
+    # Patch built-in open to simulate OSError
+    mocker.patch("builtins.open", side_effect=OSError("Test error: Cannot open file"))
 
-    monkeypatch.setattr("builtins.open", mock_open)
-
-    # Optional cleanup if needed (only for isolated CI environments)
+    # Optional cleanup for CI environments
     import shutil
 
     shutil.rmtree("output", ignore_errors=True)
 
+    # Call the function under test
     perf_log_file = initialize_perf_log(
         enable_perf_log=True,
         input_file=DUMMY_INPUT_FILE,
@@ -79,7 +77,7 @@ def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
         log_type="test_log",
     )
 
-    # Structural check: ensure fallbacks were triggered
+    # Assert: Function should handle the OSError and return None
     assert perf_log_file is None
 
 
