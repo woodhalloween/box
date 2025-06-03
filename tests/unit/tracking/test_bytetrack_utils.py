@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -58,27 +59,31 @@ def test_initialize_perf_log_disabled(tmp_path):
     assert perf_log_file is None
 
 
-def test_initialize_perf_log_file_creation_error(mocker, tmp_path):
-    """Tests that initialize_perf_log handles file creation failure gracefully."""
-
-    # Patch built-in open to simulate OSError
-    mocker.patch("builtins.open", side_effect=OSError("Test error: Cannot open file"))
-
-    # Optional cleanup for CI environments
-    import shutil
-
-    shutil.rmtree("output", ignore_errors=True)
-
-    # Call the function under test
-    perf_log_file = initialize_perf_log(
-        enable_perf_log=True,
-        input_file=DUMMY_INPUT_FILE,
-        model_path=DUMMY_MODEL_PATH,
-        log_type="test_log",
+def test_initialize_perf_log_file_creation_error(mocker):
+    # Patch get_system_info to avoid psutil usage (prevent collateral errors)
+    mocker.patch(
+        "tracking.bytetrack_utils.get_system_info",
+        return_value={
+            "os": "Linux",
+            "os_version": "5.10",
+            "python_version": "3.10.0",
+            "cpu": "FakeCPU",
+            "cpu_cores": 4,
+            "cpu_threads": 8,
+            "ram_total": 16,
+        },
     )
 
-    # Assert: Function should handle the OSError and return None
-    assert perf_log_file is None
+    # Patch ONLY the built-in open inside the specific context
+    with patch("builtins.open", side_effect=OSError("Test error: Cannot open file")):
+        result = initialize_perf_log(
+            enable_perf_log=True,
+            input_file="test_video.mp4",
+            model_path="test_model.pt",
+            log_type="test_log",
+        )
+
+    assert result is None
 
 
 # `get_system_info` は外部ライブラリに依存しているため、簡単な呼び出しテストのみ
