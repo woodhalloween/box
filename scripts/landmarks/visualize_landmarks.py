@@ -75,9 +75,7 @@ def plot_keypoint_diffs(df: pd.DataFrame, vis_th: float, output_prefix: Path):
     left_x = df[f"landmark_{LEFT_EAR}_x"]
     right_x = df[f"landmark_{RIGHT_EAR}_x"]
     ear_diff = right_x - left_x
-    mask_ear = (df[f"landmark_{LEFT_EAR}_visibility"] >= vis_th) & (
-        df[f"landmark_{RIGHT_EAR}_visibility"] >= vis_th
-    )
+    mask_ear = (df[f"landmark_{LEFT_EAR}_visibility"] >= vis_th) & (df[f"landmark_{RIGHT_EAR}_visibility"] >= vis_th)
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(ear_diff, label="Ear X diff (all)")
@@ -118,9 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description="Skeleton landmark visualization")
     parser.add_argument("csv_path", help="Path to skeleton CSV log")
     parser.add_argument("--vis_th", type=float, default=0.5, help="Visibility threshold (0-1)")
-    parser.add_argument(
-        "--output_prefix", default="visualization", help="Prefix path for output PNGs"
-    )
+    parser.add_argument("--output_prefix", default="visualization", help="Prefix path for output PNGs")
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)

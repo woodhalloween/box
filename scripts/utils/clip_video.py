@@ -65,10 +65,7 @@ def clip_video(input_path, output_path, start_time=0, duration=30):
         if frame_count % 10 == 0:
             progress = (frame_count / total_frames) * 100 if total_frames > 0 else 0
             remaining = (total_frames - frame_count) / fps if fps > 0 else 0
-            print(
-                f"進捗: {progress:.1f}% ({frame_count}フレーム, {current_time:.2f}秒) - "
-                f"残り約{remaining:.1f}秒"
-            )
+            print(f"進捗: {progress:.1f}% ({frame_count}フレーム, {current_time:.2f}秒) - 残り約{remaining:.1f}秒")
 
     # リソースを解放
     cap.release()
@@ -84,12 +81,8 @@ def main():
     parser = argparse.ArgumentParser(description="動画ファイルの一部を切り取ります")
     parser.add_argument("input_video", help="入力動画ファイルのパス")
     parser.add_argument("output_video", help="出力動画ファイルのパス")
-    parser.add_argument(
-        "--start", type=float, default=0.0, help="切り取り開始時間（秒）、デフォルト: 0.0"
-    )
-    parser.add_argument(
-        "--duration", type=float, default=30.0, help="切り取る長さ（秒）、デフォルト: 30.0"
-    )
+    parser.add_argument("--start", type=float, default=0.0, help="切り取り開始時間（秒）、デフォルト: 0.0")
+    parser.add_argument("--duration", type=float, default=30.0, help="切り取る長さ（秒）、デフォルト: 30.0")
 
     args = parser.parse_args()
 

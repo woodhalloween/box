@@ -45,9 +45,7 @@ def main():
         default=2,
         help="首振りと判定する連続フレーム数（デフォルト: 2）",
     )
-    parser.add_argument(
-        "--max-history", type=int, default=40, help="履歴に保存するフレーム数（デフォルト: 40）"
-    )
+    parser.add_argument("--max-history", type=int, default=40, help="履歴に保存するフレーム数（デフォルト: 40）")
     parser.add_argument(
         "--cooldown",
         type=float,

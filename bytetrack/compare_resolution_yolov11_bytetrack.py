@@ -55,9 +55,7 @@ class DetectionResults:
             "avg_objects_detected": np.mean(self.objects_detected) if self.objects_detected else 0,
             "avg_objects_tracked": np.mean(self.objects_tracked) if self.objects_tracked else 0,
             "avg_memory_usage": np.mean(self.memory_usages) if self.memory_usages else 0,
-            "avg_detection_conf": np.mean(self.detection_confidence)
-            if self.detection_confidence
-            else 0,
+            "avg_detection_conf": np.mean(self.detection_confidence) if self.detection_confidence else 0,
             "max_objects_detected": max(self.objects_detected) if self.objects_detected else 0,
             "max_objects_tracked": max(self.objects_tracked) if self.objects_tracked else 0,
         }
@@ -300,9 +298,7 @@ def process_video(
     return results
 
 
-def compare_resolutions(
-    input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device=""
-):
+def compare_resolutions(input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device=""):
     """複数の解像度で比較実行"""
     # 出力ディレクトリの作成
     os.makedirs(output_dir, exist_ok=True)
@@ -354,9 +350,7 @@ def compare_resolutions(
         print(f"\n処理開始: 解像度 {resolution_str} ({resolution_str})")
 
         # 出力ファイル名
-        output_file = os.path.join(
-            output_dir, f"{Path(input_file).stem}_{resolution_str}_{Path(model_path).stem}.mp4"
-        )
+        output_file = os.path.join(output_dir, f"{Path(input_file).stem}_{resolution_str}_{Path(model_path).stem}.mp4")
 
         # ByteTrackトラッカーの初期化 (各解像度で新しいインスタンスを使用)
         tracker = ByteTrack(track_thresh=0.3, track_buffer=30, match_thresh=0.8)
@@ -415,14 +409,10 @@ def compare_resolutions(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="YOLOv11とByteTrackによる異なる解像度での検出・追跡精度の比較"
-    )
+    parser = argparse.ArgumentParser(description="YOLOv11とByteTrackによる異なる解像度での検出・追跡精度の比較")
     parser.add_argument("--input", required=True, help="入力動画ファイルのパス")
     parser.add_argument("--output-dir", required=True, help="出力ディレクトリ")
-    parser.add_argument(
-        "--model", default="yolov11n.pt", help="YOLOモデルのパス (デフォルト: yolov11n.pt)"
-    )
+    parser.add_argument("--model", default="yolov11n.pt", help="YOLOモデルのパス (デフォルト: yolov11n.pt)")
     parser.add_argument("--enable-preview", action="store_true", help="処理中のプレビューを表示")
     parser.add_argument("--device", type=str, default="", help="使用するデバイス (例: cpu, 0)")
 

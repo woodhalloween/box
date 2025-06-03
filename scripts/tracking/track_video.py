@@ -52,15 +52,11 @@ def main(args):
 
     # トラッカーの設定
     if args.tracker == "strongsort":
-        tracker = StrongSort(
-            reid_weights=Path(WEIGHTS / "osnet_x0_25_msmt17.pt"), device=args.device, half=args.half
-        )
+        tracker = StrongSort(reid_weights=Path(WEIGHTS / "osnet_x0_25_msmt17.pt"), device=args.device, half=args.half)
     elif args.tracker == "bytetrack":
         tracker = ByteTrack(track_thresh=args.conf, track_buffer=30, match_thresh=0.8)
     elif args.tracker == "botsort":
-        tracker = BotSort(
-            reid_weights=Path(WEIGHTS / "osnet_x0_25_msmt17.pt"), device=args.device, half=args.half
-        )
+        tracker = BotSort(reid_weights=Path(WEIGHTS / "osnet_x0_25_msmt17.pt"), device=args.device, half=args.half)
     elif args.tracker == "ocsort":
         tracker = OcSort(det_thresh=args.conf, iou_threshold=0.3, use_byte=False)
     elif args.tracker == "deepocsort":
@@ -99,9 +95,7 @@ def main(args):
 
     # ログファイルの設定
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = (
-        f"log_{Path(video_path).stem}_{args.tracker}_{Path(args.yolo_model).stem}_{timestamp}.csv"
-    )
+    log_file = f"log_{Path(video_path).stem}_{args.tracker}_{Path(args.yolo_model).stem}_{timestamp}.csv"
     with open(log_file, "w", newline="") as csvfile:
         log_writer = csv.writer(csvfile)
 
@@ -120,9 +114,7 @@ def main(args):
         log_writer.writerow([])
 
         # モデル情報のヘッダー行
-        log_writer.writerow(
-            ["# YOLO Model", args.yolo_model, "Size", f"{model_info['file_size_mb']} MB"]
-        )
+        log_writer.writerow(["# YOLO Model", args.yolo_model, "Size", f"{model_info['file_size_mb']} MB"])
         log_writer.writerow(["# Model Task", model_info["task"], "Version", model_info["version"]])
         log_writer.writerow(["# Tracker", args.tracker])
         log_writer.writerow(
@@ -139,9 +131,7 @@ def main(args):
 
         # 動画情報
         log_writer.writerow(["# Video", video_path])
-        log_writer.writerow(
-            ["# Resolution", f"{width}x{height}", "FPS", fps, "Total Frames", total_frames]
-        )
+        log_writer.writerow(["# Resolution", f"{width}x{height}", "FPS", fps, "Total Frames", total_frames])
         log_writer.writerow([])
 
         # データ列のヘッダー行
@@ -232,8 +222,7 @@ def main(args):
             # ログ出力（10フレームごと）
             if frame_count % 10 == 0 or frame_count == 1:
                 print(
-                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, "
-                    f"Tracking time {tracking_time:.1f}ms"
+                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, Tracking time {tracking_time:.1f}ms"
                 )
 
             # ログをCSVに記録
@@ -280,9 +269,7 @@ def main(args):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
                 # ラベルの描画
-                cv2.putText(
-                    frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
-                )
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
             # 処理中の情報表示
             elapsed_time = time.time() - start_time
@@ -324,9 +311,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--source", type=str, default="line_fortuna_demo_multipersons.mp4", help="動画ファイルパス"
-    )
+    parser.add_argument("--source", type=str, default="line_fortuna_demo_multipersons.mp4", help="動画ファイルパス")
     parser.add_argument("--yolo-model", type=str, default="yolo11n.pt", help="YOLOモデルパス")
     parser.add_argument(
         "--tracker",

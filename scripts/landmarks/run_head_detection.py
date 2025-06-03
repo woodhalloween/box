@@ -29,19 +29,13 @@ def main():
         default="data/output/head_detection_result.mp4",
         help="出力動画のパス（指定しない場合はデフォルトパスに保存）",
     )
-    parser.add_argument(
-        "--no-save", action="store_true", help="動画を保存しない場合はこのオプションを指定"
-    )
+    parser.add_argument("--no-save", action="store_true", help="動画を保存しない場合はこのオプションを指定")
     parser.add_argument("--no-preview", action="store_true", help="プレビューを非表示にする")
     parser.add_argument("--log-dir", type=str, default="logs", help="ログを保存するディレクトリ")
 
     # YOLOおよび検出パラメータのチューニング用引数
-    parser.add_argument(
-        "--model", type=str, default="yolo11n.pt", help="YOLOモデルのパス（デフォルト: yolo11n.pt）"
-    )
-    parser.add_argument(
-        "--confidence", type=float, default=0.35, help="検出信頼度閾値（デフォルト: 0.35）"
-    )
+    parser.add_argument("--model", type=str, default="yolo11n.pt", help="YOLOモデルのパス（デフォルト: yolo11n.pt）")
+    parser.add_argument("--confidence", type=float, default=0.35, help="検出信頼度閾値（デフォルト: 0.35）")
     parser.add_argument(
         "--movement-threshold",
         type=float,

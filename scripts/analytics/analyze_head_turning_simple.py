@@ -60,9 +60,7 @@ for i, event in events_data.iloc[:5].iterrows():
     prev_sign = None
 
     # イベント期間内のみの変化を分析
-    event_period = event_data[
-        (event_data["frame_idx"] >= start_frame) & (event_data["frame_idx"] <= end_frame)
-    ]
+    event_period = event_data[(event_data["frame_idx"] >= start_frame) & (event_data["frame_idx"] <= end_frame)]
 
     for diff in event_period["landmark_0_x_diff"].dropna():
         if abs(diff) > threshold:

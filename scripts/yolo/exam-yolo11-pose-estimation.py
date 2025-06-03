@@ -297,9 +297,7 @@ def main(
     if enable_perf_log:
         system_info = get_system_info()
         timestamp_log = datetime.now().strftime("%Y%m%d_%H%M%S")
-        perf_log_file = (
-            f"log_{Path(input_file).stem}_deepsort_{Path(model_path).stem}_{timestamp_log}.csv"
-        )
+        perf_log_file = f"log_{Path(input_file).stem}_deepsort_{Path(model_path).stem}_{timestamp_log}.csv"
         perf_columns = [
             "Frame",
             "Time",
@@ -380,9 +378,7 @@ def main(
                 out.write(frame_bgr)
                 if enable_perf_log and perf_log_writer:
                     elapsed_loop_time = time.time() - loop_start_time
-                    current_overall_fps = (
-                        frame_idx / elapsed_loop_time if elapsed_loop_time > 0 else 0
-                    )
+                    current_overall_fps = frame_idx / elapsed_loop_time if elapsed_loop_time > 0 else 0
                     cuda_used_str = "Yes" if device and device != "cpu" else "No"
                     perf_log_writer.writerow(
                         [
@@ -468,19 +464,11 @@ def main(
                 print(f"処理中: {frame_idx}フレーム完了 (現在の処理速度: {current_fps:.1f}fps)")
 
                 detect_text = f"Detection: {detection_time_ms:.1f}ms"
-                track_text = (
-                    f"Tracking: {tracking_time_ms:.1f}ms" if enable_tracking else "Tracking: N/A"
-                )
+                track_text = f"Tracking: {tracking_time_ms:.1f}ms" if enable_tracking else "Tracking: N/A"
                 fps_text = f"FPS: {current_fps:.1f}"
-                cv2.putText(
-                    frame_bgr, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2
-                )
-                cv2.putText(
-                    frame_bgr, detect_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2
-                )
-                cv2.putText(
-                    frame_bgr, track_text, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2
-                )
+                cv2.putText(frame_bgr, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame_bgr, detect_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame_bgr, track_text, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             # Save the processed frame to our output file
             out.write(frame_bgr)
@@ -505,9 +493,7 @@ def main(
         total_time = time.time() - loop_start_time
         avg_fps = frame_idx / total_time if total_time > 0 else 0
         avg_detection_time = sum(detection_times) / len(detection_times) if detection_times else 0
-        avg_tracking_time = (
-            sum(tracking_times) / len(tracking_times) if tracking_times and enable_tracking else 0
-        )
+        avg_tracking_time = sum(tracking_times) / len(tracking_times) if tracking_times and enable_tracking else 0
 
         print("\n--- 処理結果サマリ ---")
         print(f"合計処理時間: {total_time:.2f} 秒")
@@ -528,37 +514,25 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="YOLO Pose Estimation Tool with DeepSORT Tracking and Logging"
-    )
+    parser = argparse.ArgumentParser(description="YOLO Pose Estimation Tool with DeepSORT Tracking and Logging")
     parser.add_argument("--input-mp4", required=True, help="入力動画ファイルのパス")
     parser.add_argument("--output-mp4", required=True, help="出力動画ファイルのパス")
-    parser.add_argument(
-        "--enable-csv-output", action="store_true", help="ポーズデータをCSVに出力 (キーポイント用)"
-    )
-    parser.add_argument(
-        "--enable-perf-log", action="store_true", help="パフォーマンスログをCSVに出力"
-    )
+    parser.add_argument("--enable-csv-output", action="store_true", help="ポーズデータをCSVに出力 (キーポイント用)")
+    parser.add_argument("--enable-perf-log", action="store_true", help="パフォーマンスログをCSVに出力")
     parser.add_argument("--device", type=str, default="", help="使用するデバイス (例: cpu, 0)")
-    parser.add_argument(
-        "--enable-video-display", action="store_true", help="処理中のプレビューを表示"
-    )
+    parser.add_argument("--enable-video-display", action="store_true", help="処理中のプレビューを表示")
     parser.add_argument(
         "--model",
         default="yolov11n-pose.pt",
         help="YOLOモデルのパス (デフォルト: yolov11n-pose.pt)",
     )
-    parser.add_argument(
-        "--disable-tracking", action="store_true", help="DeepSORTトラッキングを無効化(処理速度向上)"
-    )
+    parser.add_argument("--disable-tracking", action="store_true", help="DeepSORTトラッキングを無効化(処理速度向上)")
     args = parser.parse_args()
 
     # 出力ディレクトリの確保
     os.makedirs(os.path.dirname(args.output_mp4), exist_ok=True)
     if args.enable_perf_log:
-        log_dir = Path(
-            f"log_{Path(args.input_mp4).stem}_deepsort_{Path(args.model).stem}_YYYYMMDD_HHMMSS.csv"
-        ).parent
+        log_dir = Path(f"log_{Path(args.input_mp4).stem}_deepsort_{Path(args.model).stem}_YYYYMMDD_HHMMSS.csv").parent
         pass
 
     main(

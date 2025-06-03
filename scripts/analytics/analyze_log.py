@@ -74,9 +74,7 @@ def analyze_log_file(file_path):
 
         # 0除算を防ぐ
         if total_frames == 0:
-            print(
-                f"警告: ログファイル '{os.path.basename(file_path)}' にフレームデータがありません。"
-            )
+            print(f"警告: ログファイル '{os.path.basename(file_path)}' にフレームデータがありません。")
             print("\n" + "=" * 50)
             return
 

@@ -57,9 +57,7 @@ def initialize_perf_log(enable_perf_log: bool, input_file: str, model_path: str)
 
     system_info = get_system_info()
     timestamp_log = datetime.now().strftime("%Y%m%d_%H%M%S")
-    perf_log_file = (
-        f"log_{Path(input_file).stem}_long_stay_{Path(model_path).stem}_{timestamp_log}.csv"
-    )
+    perf_log_file = f"log_{Path(input_file).stem}_long_stay_{Path(model_path).stem}_{timestamp_log}.csv"
     perf_columns = [
         "Frame",
         "Time",
@@ -161,9 +159,7 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
             # Existing track update
             last_pos = stay_info[track_id]["last_pos"]
             last_time = stay_info[track_id]["last_time"]
-            distance = (
-                (current_pos[0] - last_pos[0]) ** 2 + (current_pos[1] - last_pos[1]) ** 2
-            ) ** 0.5
+            distance = ((current_pos[0] - last_pos[0]) ** 2 + (current_pos[1] - last_pos[1]) ** 2) ** 0.5
             time_diff = current_time - last_time
 
             if distance < move_threshold_px:
@@ -178,10 +174,7 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
             stay_info[track_id]["last_time"] = current_time
 
             # Check for notification
-            if (
-                stay_info[track_id]["stay_duration"] >= stay_threshold_sec
-                and not stay_info[track_id]["notified"]
-            ):
+            if stay_info[track_id]["stay_duration"] >= stay_threshold_sec and not stay_info[track_id]["notified"]:
                 # 長い通知メッセージを複数行に分割
                 notification = (
                     f"通知: ID {track_id} が座標 ({int(center_x)}, {int(center_y)}) "
@@ -288,9 +281,7 @@ def main(
     tracker = DeepSort(max_age=30, n_init=3, nn_budget=100)  # Standard parameters
 
     # Initialize Performance Log
-    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
-        enable_perf_log, input_file, model_path
-    )
+    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(enable_perf_log, input_file, model_path)
     if enable_perf_log and perf_log_writer:
         # Add video info to perf log header now that we have it
         perf_log_writer.writerow(["# Resolution", f"{width}x{height}", "FPS", f"{fps:.2f}"])
@@ -320,8 +311,8 @@ def main(
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
             # 1. Process frame for tracking
-            tracks, detection_time_ms, tracking_time_ms, objects_detected, objects_tracked = (
-                process_frame_for_tracking(frame_rgb, model, tracker)
+            tracks, detection_time_ms, tracking_time_ms, objects_detected, objects_tracked = process_frame_for_tracking(
+                frame_rgb, model, tracker
             )
             detection_times.append(detection_time_ms)
             tracking_times.append(tracking_time_ms)
@@ -391,9 +382,7 @@ def main(
         avg_fps = frame_idx / total_time if total_time > 0 else 0
         avg_detection_time = sum(detection_times) / len(detection_times) if detection_times else 0
         avg_tracking_time = sum(tracking_times) / len(tracking_times) if tracking_times else 0
-        avg_stay_check_time = (
-            sum(stay_check_times) / len(stay_check_times) if stay_check_times else 0
-        )
+        avg_stay_check_time = sum(stay_check_times) / len(stay_check_times) if stay_check_times else 0
 
         print("--- 処理結果サマリ ---")
         print(f"合計処理時間: {total_time:.2f} 秒")
@@ -415,9 +404,7 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Detect long stays of tracked objects (people) in a video."
-    )
+    parser = argparse.ArgumentParser(description="Detect long stays of tracked objects (people) in a video.")
     parser.add_argument("--input-mp4", required=True, help="入力動画ファイルのパス")
     parser.add_argument("--output-mp4", required=True, help="出力動画ファイルのパス")
     parser.add_argument(
@@ -425,13 +412,9 @@ if __name__ == "__main__":
         default="models/yolov8n.pt",
         help="YOLOモデルのパス (人物検出用, デフォルト: models/yolov8n.pt)",
     )
-    parser.add_argument(
-        "--enable-perf-log", action="store_true", help="パフォーマンスログをCSVに出力"
-    )
+    parser.add_argument("--enable-perf-log", action="store_true", help="パフォーマンスログをCSVに出力")
     parser.add_argument("--device", type=str, default="", help="使用するデバイス (例: cpu, 0, '')")
-    parser.add_argument(
-        "--enable-video-display", action="store_true", help="処理中のプレビューを表示"
-    )
+    parser.add_argument("--enable-video-display", action="store_true", help="処理中のプレビューを表示")
     parser.add_argument(
         "--stay-threshold",
         type=float,

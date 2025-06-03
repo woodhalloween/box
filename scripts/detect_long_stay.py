@@ -135,8 +135,8 @@ def main(
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
             # 検出と追跡
-            tracks, detection_time_ms, tracking_time_ms, num_detections, num_tracks, _ = (
-                process_frame_for_tracking(frame_rgb, model, tracker)
+            tracks, detection_time_ms, tracking_time_ms, num_detections, num_tracks, _ = process_frame_for_tracking(
+                frame_rgb, model, tracker
             )
 
             # 長時間滞在チェック
@@ -151,17 +151,11 @@ def main(
             # 描画処理
             if out or enable_video_display:
                 # トラッキング情報を描画
-                frame_bgr = draw_tracking_info(
-                    frame_bgr, tracks, show_duration=True, stay_info=stay_info
-                )
+                frame_bgr = draw_tracking_info(frame_bgr, tracks, show_duration=True, stay_info=stay_info)
 
                 # FPS情報などを追加
                 # process_time = (time.time() - current_time) * 1000
-                current_fps = (
-                    1.0 / (time.time() - last_fps_update)
-                    if (time.time() - last_fps_update) > 0
-                    else 0
-                )
+                current_fps = 1.0 / (time.time() - last_fps_update) if (time.time() - last_fps_update) > 0 else 0
                 fps_buffer.append(current_fps)
                 if len(fps_buffer) > 10:
                     fps_buffer.pop(0)
@@ -171,9 +165,7 @@ def main(
                 # フレーム情報テキスト
                 frame_info = f"Frame: {frame_idx}/{frame_count} FPS: {avg_fps:.1f}"
                 stats_info = (
-                    f"Det: {detection_time_ms:.1f}ms "
-                    f"Track: {tracking_time_ms:.1f}ms "
-                    f"Stay: {stay_check_time_ms:.1f}ms"
+                    f"Det: {detection_time_ms:.1f}ms Track: {tracking_time_ms:.1f}ms Stay: {stay_check_time_ms:.1f}ms"
                 )
                 objects_info = f"Detected: {num_detections} Tracked: {num_tracks}"
 
@@ -302,9 +294,7 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="動画からByteTrackを用いて長時間滞在を検出します。"
-    )
+    parser = argparse.ArgumentParser(description="動画からByteTrackを用いて長時間滞在を検出します。")
     parser.add_argument(
         "--input",
         type=str,

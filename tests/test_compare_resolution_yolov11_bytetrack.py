@@ -117,9 +117,7 @@ class TestSystemInfo:
     @patch("platform.processor", return_value="TestCPU")
     @patch("psutil.cpu_count", side_effect=[4, 8])  # logical=False, logical=True
     @patch("psutil.virtual_memory")
-    def test_get_system_info(
-        self, mock_vm, mock_cpu_count, mock_processor, mock_py_ver, mock_version, mock_system
-    ):
+    def test_get_system_info(self, mock_vm, mock_cpu_count, mock_processor, mock_py_ver, mock_version, mock_system):
         """get_system_info関数のテスト"""
         # psutilのvirtual_memory()の戻り値をモック
         mock_vm.return_value.total = 17179869184  # 16GB in bytes
@@ -289,9 +287,7 @@ class TestComplexFunctions:
         mock_process.return_value.memory_info.return_value.rss = 100 * 1024 * 1024  # 100MB
 
         # 関数を実行
-        results = process_video(
-            "test.mp4", "out.mp4", MagicMock(), MagicMock(), 1920, 1080, 1920, 1080, False
-        )
+        results = process_video("test.mp4", "out.mp4", MagicMock(), MagicMock(), 1920, 1080, 1920, 1080, False)
 
         # 結果の検証
         assert results is not None
