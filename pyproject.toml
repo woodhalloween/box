@@ -77,9 +77,6 @@ select = [
     "SIM",  # flake8-simplify
 ]
 
-[tool.poetry.scripts]
-format = "bash -c 'ruff format .'"
-
 # 無視するルール
 ignore = []
 
@@ -93,6 +90,9 @@ exclude = [
     "__pycache__",
     "*.pyc",
 ]
+
+[tool.poetry.scripts]
+format = "bash -c 'ruff format .'"
 
 # インポートの整理に関する設定
 [tool.ruff.lint.isort]
