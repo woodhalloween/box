@@ -44,6 +44,11 @@ jobs:
       - name: 🎨 Ruff format check
         run: poetry run ruff format --check .
 
+      - name: 🔧 Run Pre-Commit Hooks
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+
   test:
     name: Run tests with pytest
     runs-on: ubuntu-latest

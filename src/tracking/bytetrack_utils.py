@@ -53,9 +53,7 @@ class DetectionResults:
             "avg_objects_detected": np.mean(self.objects_detected) if self.objects_detected else 0,
             "avg_objects_tracked": np.mean(self.objects_tracked) if self.objects_tracked else 0,
             "avg_memory_usage": np.mean(self.memory_usages) if self.memory_usages else 0,
-            "avg_detection_conf": np.mean(self.detection_confidence)
-            if self.detection_confidence
-            else 0,
+            "avg_detection_conf": np.mean(self.detection_confidence) if self.detection_confidence else 0,
             "max_objects_detected": max(self.objects_detected) if self.objects_detected else 0,
             "max_objects_tracked": max(self.objects_tracked) if self.objects_tracked else 0,
         }
@@ -143,26 +141,10 @@ def draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
             # 長時間滞在の場合は色を変える
             color = (0, 0, 255) if stay_duration >= 4.0 else (0, 255, 0)
 
-            cv2.putText(
-                frame,
-                label,
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                color,
-                2
-            )
+            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         else:
             label = f"ID: {track_id}"
-            cv2.putText(
-                frame,
-                label,
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                2
-            )
+            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
     return frame
 
@@ -190,8 +172,18 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
     perf_log_file = output_dir / f"log_{input_stem}_{log_type}_{model_stem}_{timestamp_log}.csv"
 
     perf_columns = [
-        "Frame", "Time", "Detection_Time_ms", "Tracking_Time_ms", "Total_Time_ms",
-        "Objects_Detected", "Objects_Tracked", "FPS", "Memory_MB", "Model", "Tracker", "Notes"
+        "Frame",
+        "Time",
+        "Detection_Time_ms",
+        "Tracking_Time_ms",
+        "Total_Time_ms",
+        "Objects_Detected",
+        "Objects_Tracked",
+        "FPS",
+        "Memory_MB",
+        "Model",
+        "Tracker",
+        "Notes",
     ]
     if log_type == "long_stay":
         perf_columns.insert(4, "Stay_Check_Time_ms")
@@ -202,11 +194,13 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
             perf_log_writer.writerow(["# System Information"])
             perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
             perf_log_writer.writerow(["# Python", system_info["python_version"]])
-            perf_log_writer.writerow([
-                "# CPU",
-                system_info["cpu"],
-                f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads"
-            ])
+            perf_log_writer.writerow(
+                [
+                    "# CPU",
+                    system_info["cpu"],
+                    f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
+                ]
+            )
             perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
             perf_log_writer.writerow([])
             perf_log_writer.writerow(["# YOLO Model", model_path])
@@ -221,7 +215,7 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
 
     except OSError as e:
         print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
-        return None,
+        return (None,)
 
 
 def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec):
@@ -271,11 +265,7 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
 
             # 過去1秒間の平均位置と比較して移動判定（より安定した判定のため）
             history_seconds = 1.0  # 過去何秒間の履歴を参照するか
-            relevant_history = [
-                p
-                for t, p, _ in stay_info[track_id]["history"]
-                if current_time - t <= history_seconds
-            ]
+            relevant_history = [p for t, p, _ in stay_info[track_id]["history"] if current_time - t <= history_seconds]
             if not relevant_history:
                 relevant_history = [last_pos]  # 履歴が足りない場合は最後の位置を使用
 
@@ -311,16 +301,11 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
             # 古い履歴を削除（例: 過去5秒分のみ保持）
             max_history_duration = 5.0
             stay_info[track_id]["history"] = [
-                h
-                for h in stay_info[track_id]["history"]
-                if current_time - h[0] <= max_history_duration
+                h for h in stay_info[track_id]["history"] if current_time - h[0] <= max_history_duration
             ]
 
             # 長時間滞在の通知チェック
-            if (
-                stay_info[track_id]["stay_duration"] >= stay_threshold_sec
-                and not stay_info[track_id]["notified"]
-            ):
+            if stay_info[track_id]["stay_duration"] >= stay_threshold_sec and not stay_info[track_id]["notified"]:
                 notifications.append(
                     {
                         "id": track_id,

@@ -49,8 +49,8 @@ build-backend = "poetry.core.masonry.api"
 # Ruff の設定
 [tool.ruff]
 # 最大行長
-line-length = 100
-
+line-length = 120
+extend-exclude = ["build", "dist", ".venv"]  # optional, context-aware
 # 対象とする Python バージョン
 target-version = "py310"
 
@@ -76,6 +76,9 @@ select = [
     "RET",  # flake8-return
     "SIM",  # flake8-simplify
 ]
+
+[tool.poetry.scripts]
+format = "bash -c 'ruff format .'"
 
 # 無視するルール
 ignore = []

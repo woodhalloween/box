@@ -32,9 +32,7 @@ def test_initialize_perf_log_enabled(tmp_path):
 
     log_file_path = Path(perf_log_file)
     assert log_file_path.exists()
-    assert log_file_path.name.startswith(
-        f"log_{Path(DUMMY_INPUT_FILE).stem}_test_log_{Path(DUMMY_MODEL_PATH).stem}_"
-    )
+    assert log_file_path.name.startswith(f"log_{Path(DUMMY_INPUT_FILE).stem}_test_log_{Path(DUMMY_MODEL_PATH).stem}_")
     assert log_file_path.parent.name == "logs"
     assert log_file_path.parent.parent.name == "output"
 
@@ -79,6 +77,7 @@ def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
 
     # Optional cleanup if needed (only for isolated CI environments)
     import shutil
+
     shutil.rmtree("output", ignore_errors=True)
 
     perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
@@ -149,9 +148,7 @@ def test_update_stay_times_short_stay(sample_tracks):
     stay_threshold_sec = 5.0
 
     # Frame 1
-    stay_info, _, _ = update_stay_times(
-        sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec
-    )
+    stay_info, _, _ = update_stay_times(sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec)
 
     # Frame 2 (1秒後、同じ位置)
     time.sleep(0.1)  # 実際の時間経過を模倣（ただしテスト時間を短縮するため0.1秒）
@@ -173,9 +170,7 @@ def test_update_stay_times_long_stay_and_notification(sample_tracks):
     stay_threshold_sec = 0.1  # 短い閾値でテスト
 
     # Frame 1
-    stay_info, _, _ = update_stay_times(
-        sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec
-    )
+    stay_info, _, _ = update_stay_times(sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec)
 
     # Frame 2 (閾値を超える時間後、同じ位置)
     # time.sleep(stay_threshold_sec + 0.1) # CI環境などで不安定になるため time.sleep は避ける
@@ -186,9 +181,7 @@ def test_update_stay_times_long_stay_and_notification(sample_tracks):
     )
 
     assert updated_stay_info[1]["stay_duration"] >= stay_threshold_sec
-    assert (
-        len(notifications) > 0
-    )  # sample_tracks に複数のトラックIDがあるので、それぞれ通知される可能性がある
+    assert len(notifications) > 0  # sample_tracks に複数のトラックIDがあるので、それぞれ通知される可能性がある
     assert notifications[0]["id"] == 1 or notifications[0]["id"] == 2
     assert updated_stay_info[1]["notified"]
 
@@ -208,9 +201,7 @@ def test_update_stay_times_move_resets_stay(sample_tracks):
     stay_threshold_sec = 0.1
 
     # Frame 1 (滞在開始)
-    stay_info, _, _ = update_stay_times(
-        sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec
-    )
+    stay_info, _, _ = update_stay_times(sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec)
     # time.sleep(stay_threshold_sec + 0.1)
     current_time_2 = current_time + stay_threshold_sec + 0.1
     stay_info, notifications, _ = update_stay_times(
@@ -243,9 +234,7 @@ def test_update_stay_times_track_lost(sample_tracks):
     stay_threshold_sec = 5.0
 
     # Frame 1 (ID 1, 2 を登録)
-    stay_info, _, _ = update_stay_times(
-        sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec
-    )
+    stay_info, _, _ = update_stay_times(sample_tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec)
     assert 1 in stay_info
     assert 2 in stay_info
 
