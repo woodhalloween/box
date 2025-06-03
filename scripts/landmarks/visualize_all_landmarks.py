@@ -1,7 +1,10 @@
 """visualize_all_landmarks.py
-MediaPipe Poseのすべてのランドマーク(x,y)を時系列でプロットし、visibilityフィルタを適用した点を強調表示します。
+MediaPipe Poseのすべてのランドマーク(x, y)を時系列でプロットし、
+visibilityフィルタを適用した点を強調表示します。
+
 Usage:
-    python analysis/visualize_all_landmarks.py <skeleton_csv> --vis_th 0.5 --output_dir output/all_landmarks
+    python analysis/visualize_all_landmarks.py <skeleton_csv> \
+--vis_th 0.5 --output_dir output/all_landmarks
 """
 
 import argparse

@@ -81,7 +81,8 @@ def create_lower_fps_video(input_file, output_file, target_fps=10):
     # 元のFPSが既に10以下の場合はそのままコピー
     if orig_fps <= target_fps:
         print(
-            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。"
+            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。"
+            f"そのままコピーします。"
         )
         cap.release()
         import shutil
@@ -159,7 +160,6 @@ def process_video(
     results = DetectionResults()
     frame_idx = 0
     start_time = time.time()
-    last_fps_update = start_time
     fps_buffer = []
 
     try:
@@ -225,7 +225,7 @@ def process_video(
 
             # 進捗表示
             if frame_idx % 30 == 0:
-                elapsed = time.time() - start_time
+                # elapsed = time.time() - start_time
                 progress = frame_idx / frame_count * 100 if frame_count > 0 else 0
                 print(
                     f"進捗: {frame_idx}/{frame_count} ({progress:.1f}%) "
@@ -272,7 +272,8 @@ def compare_fps(
     cap.release()
 
     print(
-        f"元の入力動画: {original_width}x{original_height}, {original_fps:.2f}fps, {frame_count}フレーム"
+        f"元の入力動画: {original_width}x{original_height}, "
+        f"{original_fps:.2f}fps, {frame_count}フレーム"
     )
 
     # 出力ディレクトリの作成
@@ -300,7 +301,8 @@ def compare_fps(
             temp_video_file = os.path.join(output_dir, f"temp_video_{current_proc_fps:.0f}fps.mp4")
             if not create_lower_fps_video(input_file, temp_video_file, target_fps=current_proc_fps):
                 print(
-                    f"エラー: {current_proc_fps}fpsの動画作成に失敗しました。このFPSでの処理をスキップします。"
+                    f"エラー: {current_proc_fps}fpsの動画作成に失敗しました。"
+                    f"このFPSでの処理をスキップします。"
                 )
                 continue
             video_to_process = temp_video_file

@@ -198,7 +198,8 @@ def create_lower_fps_video(input_file, output_file, target_fps=10):
     # 元のFPSが既に10以下の場合はそのままコピー
     if orig_fps <= target_fps:
         print(
-            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。"
+            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。"
+            f"そのままコピーします。"
         )
         cap.release()
         import shutil
@@ -276,7 +277,6 @@ def process_video(
 
     try:
         while True:
-            frame_start_time = time.time()
             ret, frame_bgr = cap.read()
             if not ret:
                 break

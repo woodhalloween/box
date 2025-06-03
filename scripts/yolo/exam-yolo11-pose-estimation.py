@@ -366,7 +366,6 @@ def main(
         print("処理を開始します...")
         while True:
             # Read a raw BGR frame from the video
-            frame_start_time = time.time()
             ret, frame_bgr = cap.read()
             if not ret:
                 # End of video or read error
@@ -436,7 +435,6 @@ def main(
 
             # Write performance log entry
             if enable_perf_log and perf_log_writer:
-                frame_end_time = time.time()
                 elapsed_loop_time = time.time() - loop_start_time
                 current_overall_fps = frame_idx / elapsed_loop_time if elapsed_loop_time > 0 else 0
                 cuda_used_str = "Yes" if device and device != "cpu" else "No"
@@ -487,7 +485,8 @@ def main(
             # Save the processed frame to our output file
             out.write(frame_bgr)
 
-            # Optionally, also display if you want a live window (can be omitted if running headless)
+            # Optionally, also display if you want a live window
+            # (can be omitted if running headless)
             if enable_video_display:
                 cv2.imshow("YOLO Pose", frame_bgr)
                 if cv2.waitKey(1) & 0xFF == ord("q"):

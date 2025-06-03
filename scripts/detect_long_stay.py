@@ -119,7 +119,6 @@ def main(
     try:
         frame_idx = 0
         start_time = time.time()
-        last_output_time = start_time
         last_fps_update = start_time
         fps_buffer = []
 
@@ -157,7 +156,7 @@ def main(
                 )
 
                 # FPS情報などを追加
-                process_time = (time.time() - current_time) * 1000
+                # process_time = (time.time() - current_time) * 1000
                 current_fps = (
                     1.0 / (time.time() - last_fps_update)
                     if (time.time() - last_fps_update) > 0
@@ -171,7 +170,11 @@ def main(
 
                 # フレーム情報テキスト
                 frame_info = f"Frame: {frame_idx}/{frame_count} FPS: {avg_fps:.1f}"
-                stats_info = f"Det: {detection_time_ms:.1f}ms Track: {tracking_time_ms:.1f}ms Stay: {stay_check_time_ms:.1f}ms"
+                stats_info = (
+                    f"Det: {detection_time_ms:.1f}ms "
+                    f"Track: {tracking_time_ms:.1f}ms "
+                    f"Stay: {stay_check_time_ms:.1f}ms"
+                )
                 objects_info = f"Detected: {num_detections} Tracked: {num_tracks}"
 
                 # テキスト背景用の黒枠描画
@@ -317,7 +320,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="yolov8n.pt",  # 修正: yolo11n-pose.pt から yolov8n.pt へ変更の提案（一般的であるため）
+        # 修正: yolo11n-pose.pt から yolov8n.pt へ変更の提案
+        # （一般的であるため）
+        default="yolov8n.pt",
         help="YOLOモデルファイルのパス。 (例: models/yolov8n.pt)",
     )
     parser.add_argument(

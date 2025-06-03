@@ -100,7 +100,6 @@ def process_video(
     results = DetectionResults()
     frame_idx = 0
     start_time = time.time()
-    last_fps_update = start_time
     fps_buffer = []
 
     try:
@@ -170,10 +169,11 @@ def process_video(
 
             # 進捗表示
             if frame_idx % 30 == 0:
-                elapsed = time.time() - start_time
+                # elapsed = time.time() - start_time
                 progress = frame_idx / frame_count * 100 if frame_count > 0 else 0
                 print(
-                    f"解像度 {target_width}x{target_height}: {frame_idx}/{frame_count} ({progress:.1f}%) "
+                    f"解像度 {target_width}x{target_height}: "
+                    f"{frame_idx}/{frame_count} ({progress:.1f}%) "
                     f"FPS: {avg_fps:.1f} メモリ: {current_memory:.1f}MB"
                 )
 
