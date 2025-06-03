@@ -81,6 +81,7 @@ def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
     import shutil
     shutil.rmtree("output", ignore_errors=True)
 
+    import builtins
     perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
         enable_perf_log=True,
         input_file=DUMMY_INPUT_FILE,
