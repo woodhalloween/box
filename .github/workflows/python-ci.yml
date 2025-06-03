@@ -72,6 +72,11 @@ jobs:
       - name: 📦 Install dependencies
         run: poetry install --with dev
 
+      - name: 🧱 Install OpenCV system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgl1
+
       - name: 🧪 Collect test metadata (check import errors)
         run: |
           if [ -d "tests" ]; then
