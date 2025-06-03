@@ -15,7 +15,7 @@ DUMMY_MODEL_PATH = "test_model.pt"
 def test_initialize_perf_log_enabled(tmp_path):
     """Test case when performance log is enabled"""
 
-    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
+    perf_log_file = initialize_perf_log(
         enable_perf_log=True,
         input_file=DUMMY_INPUT_FILE,
         model_path=DUMMY_MODEL_PATH,
@@ -23,12 +23,6 @@ def test_initialize_perf_log_enabled(tmp_path):
     )
 
     assert perf_log_file is not None
-    assert perf_log_f is not None
-    assert perf_log_writer is not None
-
-    # ✅ Flush and close before reading
-    perf_log_f.flush()
-    perf_log_f.close()
 
     log_file_path = Path(perf_log_file)
     assert log_file_path.exists()
@@ -55,15 +49,13 @@ def test_initialize_perf_log_enabled(tmp_path):
 def test_initialize_perf_log_disabled(tmp_path):
     """パフォーマンスログが無効な場合のテスト"""
     # tmp_path はこのテストでは直接使われないが、pytestの慣習として引数に含める
-    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
+    perf_log_file = initialize_perf_log(
         enable_perf_log=False,
         input_file=DUMMY_INPUT_FILE,
         model_path=DUMMY_MODEL_PATH,
         log_type="test_log",
     )
     assert perf_log_file is None
-    assert perf_log_f is None
-    assert perf_log_writer is None
 
 
 def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
@@ -80,7 +72,7 @@ def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
 
     shutil.rmtree("output", ignore_errors=True)
 
-    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
+    perf_log_file = initialize_perf_log(
         enable_perf_log=True,
         input_file=DUMMY_INPUT_FILE,
         model_path=DUMMY_MODEL_PATH,
@@ -89,8 +81,6 @@ def test_initialize_perf_log_file_creation_error(monkeypatch, tmp_path):
 
     # Structural check: ensure fallbacks were triggered
     assert perf_log_file is None
-    assert perf_log_f is None
-    assert perf_log_writer is None
 
 
 # `get_system_info` は外部ライブラリに依存しているため、簡単な呼び出しテストのみ
