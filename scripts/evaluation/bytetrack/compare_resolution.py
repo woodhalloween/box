@@ -100,7 +100,6 @@ def process_video(
     results = DetectionResults()
     frame_idx = 0
     start_time = time.time()
-    last_fps_update = start_time
     fps_buffer = []
 
     try:
@@ -170,10 +169,11 @@ def process_video(
 
             # 進捗表示
             if frame_idx % 30 == 0:
-                elapsed = time.time() - start_time
+                # elapsed = time.time() - start_time
                 progress = frame_idx / frame_count * 100 if frame_count > 0 else 0
                 print(
-                    f"解像度 {target_width}x{target_height}: {frame_idx}/{frame_count} ({progress:.1f}%) "
+                    f"解像度 {target_width}x{target_height}: "
+                    f"{frame_idx}/{frame_count} ({progress:.1f}%) "
                     f"FPS: {avg_fps:.1f} メモリ: {current_memory:.1f}MB"
                 )
 
@@ -187,17 +187,13 @@ def process_video(
             cv2.destroyAllWindows()
 
     total_time = time.time() - start_time
-    print(
-        f"\n処理完了 ({target_width}x{target_height}): {frame_idx}フレーム処理 ({total_time:.1f}秒)"
-    )
+    print(f"\n処理完了 ({target_width}x{target_height}): {frame_idx}フレーム処理 ({total_time:.1f}秒)")
     print(f"平均FPS: {frame_idx / total_time:.1f}")
 
     return results
 
 
-def compare_resolutions(
-    input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device=""
-):
+def compare_resolutions(input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device=""):
     """異なる解像度での性能を比較する"""
     print(f"モデル: {model_path}")
 
@@ -232,9 +228,7 @@ def compare_resolutions(
 
     # ログファイルの初期化
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(
-        output_dir, f"resolution_comparison_{Path(model_path).stem}_{timestamp}.csv"
-    )
+    log_file = os.path.join(output_dir, f"resolution_comparison_{Path(model_path).stem}_{timestamp}.csv")
     initialize_log_file(log_file, input_file, model_path, resolutions)
 
     all_results = {}
@@ -299,9 +293,7 @@ def compare_resolutions(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="異なる解像度でのYOLOv11とByteTrackの性能を比較します。"
-    )
+    parser = argparse.ArgumentParser(description="異なる解像度でのYOLOv11とByteTrackの性能を比較します。")
     parser.add_argument("--input", type=str, required=True, help="入力動画ファイルのパス")
     parser.add_argument(
         "--output_dir",

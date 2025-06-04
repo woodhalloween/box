@@ -52,9 +52,7 @@ def main():
     plt.savefig("analysis/landmark_distances.png")
     plt.close()
 
-    print(
-        "分析完了: analysis/summary_stats.csv と analysis/landmark_distances.png を出力しました。"
-    )
+    print("分析完了: analysis/summary_stats.csv と analysis/landmark_distances.png を出力しました。")
 
 
 if __name__ == "__main__":

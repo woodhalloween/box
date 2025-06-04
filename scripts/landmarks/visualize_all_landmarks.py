@@ -1,7 +1,10 @@
 """visualize_all_landmarks.py
-MediaPipe Poseのすべてのランドマーク(x,y)を時系列でプロットし、visibilityフィルタを適用した点を強調表示します。
+MediaPipe Poseのすべてのランドマーク(x, y)を時系列でプロットし、
+visibilityフィルタを適用した点を強調表示します。
+
 Usage:
-    python analysis/visualize_all_landmarks.py <skeleton_csv> --vis_th 0.5 --output_dir output/all_landmarks
+    python analysis/visualize_all_landmarks.py <skeleton_csv> \
+--vis_th 0.5 --output_dir output/all_landmarks
 """
 
 import argparse
@@ -25,13 +28,7 @@ def save_plot(fig, out_path: Path):
 
 def plot_all_landmarks(df: pd.DataFrame, vis_th: float, output_dir: Path):
     # ランドマークIDを抽出
-    ids = sorted(
-        {
-            int(col.split("_")[1])
-            for col in df.columns
-            if col.startswith("landmark_") and col.endswith("_x")
-        }
-    )
+    ids = sorted({int(col.split("_")[1]) for col in df.columns if col.startswith("landmark_") and col.endswith("_x")})
     for idx in ids:
         x = df[f"landmark_{idx}_x"]
         y = df[f"landmark_{idx}_y"]
@@ -61,9 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description="Visualize all Mediapipe Pose landmarks")
     parser.add_argument("csv_path", help="Path to skeleton CSV log")
     parser.add_argument("--vis_th", type=float, default=0.5, help="Visibility threshold")
-    parser.add_argument(
-        "--output_dir", default="output/all_landmarks", help="Directory to save plots"
-    )
+    parser.add_argument("--output_dir", default="output/all_landmarks", help="Directory to save plots")
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)

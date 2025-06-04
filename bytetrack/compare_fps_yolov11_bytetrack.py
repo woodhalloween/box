@@ -55,9 +55,7 @@ class DetectionResults:
             "avg_objects_detected": np.mean(self.objects_detected) if self.objects_detected else 0,
             "avg_objects_tracked": np.mean(self.objects_tracked) if self.objects_tracked else 0,
             "avg_memory_usage": np.mean(self.memory_usages) if self.memory_usages else 0,
-            "avg_detection_conf": np.mean(self.detection_confidence)
-            if self.detection_confidence
-            else 0,
+            "avg_detection_conf": np.mean(self.detection_confidence) if self.detection_confidence else 0,
             "max_objects_detected": max(self.objects_detected) if self.objects_detected else 0,
             "max_objects_tracked": max(self.objects_tracked) if self.objects_tracked else 0,
         }
@@ -197,9 +195,7 @@ def create_lower_fps_video(input_file, output_file, target_fps=10):
 
     # 元のFPSが既に10以下の場合はそのままコピー
     if orig_fps <= target_fps:
-        print(
-            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。"
-        )
+        print(f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。")
         cap.release()
         import shutil
 
@@ -276,7 +272,6 @@ def process_video(
 
     try:
         while True:
-            frame_start_time = time.time()
             ret, frame_bgr = cap.read()
             if not ret:
                 break
@@ -357,9 +352,7 @@ def process_video(
     return results
 
 
-def compare_fps(
-    input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device="", target_fps=10
-):
+def compare_fps(input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device="", target_fps=10):
     """異なるFPSで比較実行"""
     # 出力ディレクトリの作成
     os.makedirs(output_dir, exist_ok=True)
@@ -478,19 +471,13 @@ def compare_fps(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="YOLOv11とByteTrackによる異なるFPSでの検出・追跡精度の比較"
-    )
+    parser = argparse.ArgumentParser(description="YOLOv11とByteTrackによる異なるFPSでの検出・追跡精度の比較")
     parser.add_argument("--input", required=True, help="入力動画ファイルのパス")
     parser.add_argument("--output-dir", required=True, help="出力ディレクトリ")
-    parser.add_argument(
-        "--model", default="yolov11n.pt", help="YOLOモデルのパス (デフォルト: yolov11n.pt)"
-    )
+    parser.add_argument("--model", default="yolov11n.pt", help="YOLOモデルのパス (デフォルト: yolov11n.pt)")
     parser.add_argument("--enable-preview", action="store_true", help="処理中のプレビューを表示")
     parser.add_argument("--device", type=str, default="", help="使用するデバイス (例: cpu, 0)")
-    parser.add_argument(
-        "--target-fps", type=int, default=10, help="比較する目標FPS（デフォルト: 10）"
-    )
+    parser.add_argument("--target-fps", type=int, default=10, help="比較する目標FPS（デフォルト: 10）")
 
     args = parser.parse_args()
 
@@ -505,9 +492,7 @@ def main():
         return
 
     # FPS比較の実行
-    compare_fps(
-        args.input, args.output_dir, args.model, args.enable_preview, args.device, args.target_fps
-    )
+    compare_fps(args.input, args.output_dir, args.model, args.enable_preview, args.device, args.target_fps)
 
 
 if __name__ == "__main__":

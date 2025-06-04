@@ -69,8 +69,7 @@ def main(args):
     else:
         # このスクリプトはDeepSORT専用とするため、他のトラッカーはエラーとする
         raise ValueError(
-            f"このスクリプトはDeepSORT専用です。 "
-            f"指定されたトラッカー {args.tracker} はサポートされていません。"
+            f"このスクリプトはDeepSORT専用です。 指定されたトラッカー {args.tracker} はサポートされていません。"
         )
 
     # 動画の読み込み
@@ -90,9 +89,7 @@ def main(args):
 
     # ログファイルの設定
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = (
-        f"log_{Path(video_path).stem}_{args.tracker}_{Path(args.yolo_model).stem}_{timestamp}.csv"
-    )
+    log_file = f"log_{Path(video_path).stem}_{args.tracker}_{Path(args.yolo_model).stem}_{timestamp}.csv"
     with open(log_file, "w", newline="") as csvfile:
         log_writer = csv.writer(csvfile)
 
@@ -111,9 +108,7 @@ def main(args):
         log_writer.writerow([])
 
         # モデル情報のヘッダー行
-        log_writer.writerow(
-            ["# YOLO Model", args.yolo_model, "Size", f"{model_info['file_size_mb']} MB"]
-        )
+        log_writer.writerow(["# YOLO Model", args.yolo_model, "Size", f"{model_info['file_size_mb']} MB"])
         log_writer.writerow(["# Model Task", model_info["task"], "Version", model_info["version"]])
         log_writer.writerow(["# Tracker", args.tracker])
         log_writer.writerow(
@@ -130,9 +125,7 @@ def main(args):
 
         # 動画情報
         log_writer.writerow(["# Video", video_path])
-        log_writer.writerow(
-            ["# Resolution", f"{width}x{height}", "FPS", fps, "Total Frames", total_frames]
-        )
+        log_writer.writerow(["# Resolution", f"{width}x{height}", "FPS", fps, "Total Frames", total_frames])
         log_writer.writerow([])
 
         # データ列のヘッダー行
@@ -228,8 +221,7 @@ def main(args):
             # ログ出力（10フレームごと）
             if frame_count % 10 == 0 or frame_count == 1:
                 print(
-                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, "
-                    f"Tracking time {tracking_time:.1f}ms"
+                    f"Frame {frame_count}: Detection time {detection_time:.1f}ms, Tracking time {tracking_time:.1f}ms"
                 )
 
             # ログをCSVに記録
@@ -279,9 +271,7 @@ def main(args):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
                 # ラベルの描画
-                cv2.putText(
-                    frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
-                )
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
             # 処理中の情報表示
             elapsed_time = time.time() - start_time
@@ -323,9 +313,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Track objects in a video using YOLO and DeepSORT."
-    )
+    parser = argparse.ArgumentParser(description="Track objects in a video using YOLO and DeepSORT.")
     parser.add_argument("--source", type=str, required=True, help="動画ファイルパス")
     parser.add_argument(
         "--yolo-model",
@@ -341,9 +329,7 @@ if __name__ == "__main__":
         help="使用するトラッカー (このスクリプトではdeepsortのみ)",
     )
     parser.add_argument("--device", type=str, default="", help="使用するデバイス (例: cpu, 0)")
-    parser.add_argument(
-        "--classes", type=int, nargs="+", default=[0], help="検出・追跡するクラスID (例: 0 は人物)"
-    )
+    parser.add_argument("--classes", type=int, nargs="+", default=[0], help="検出・追跡するクラスID (例: 0 は人物)")
     parser.add_argument("--conf", type=float, default=0.3, help="検出信頼度閾値")
     parser.add_argument(
         "--half",

@@ -19,7 +19,7 @@ import pytest
 
 # テスト対象のモジュールをインポートできるようにパスを追加
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.compare_resolution_yolov11_bytetrack import (
+from bytetrack.compare_resolution_yolov11_bytetrack import (
     DetectionResults,
     draw_tracking_info,
     get_system_info,
@@ -117,9 +117,7 @@ class TestSystemInfo:
     @patch("platform.processor", return_value="TestCPU")
     @patch("psutil.cpu_count", side_effect=[4, 8])  # logical=False, logical=True
     @patch("psutil.virtual_memory")
-    def test_get_system_info(
-        self, mock_vm, mock_cpu_count, mock_processor, mock_py_ver, mock_version, mock_system
-    ):
+    def test_get_system_info(self, mock_vm, mock_cpu_count, mock_processor, mock_py_ver, mock_version, mock_system):
         """get_system_info関数のテスト"""
         # psutilのvirtual_memory()の戻り値をモック
         mock_vm.return_value.total = 17179869184  # 16GB in bytes
@@ -139,7 +137,7 @@ class TestLogFile:
     """ログファイル関連の関数のテスト"""
 
     @patch("builtins.open", new_callable=mock_open)
-    @patch("scripts.compare_resolution_yolov11_bytetrack.get_system_info")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.get_system_info")
     def test_initialize_log_file(self, mock_get_info, mock_file, mock_system_info):
         """initialize_log_file関数のテスト"""
         mock_get_info.return_value = mock_system_info
@@ -245,13 +243,13 @@ class TestTracking:
 class TestComplexFunctions:
     """より複雑な関数のモックテスト"""
 
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoWriter")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.cvtColor")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.process_frame_for_tracking")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.draw_tracking_info")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.time.time")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.psutil.Process")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoWriter")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.cvtColor")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.process_frame_for_tracking")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.draw_tracking_info")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.time.time")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.psutil.Process")
     def test_process_video_basic(
         self,
         mock_process,
@@ -263,7 +261,7 @@ class TestComplexFunctions:
         mock_vid_cap,
     ):
         """process_video関数の基本的なテスト"""
-        from scripts.compare_resolution_yolov11_bytetrack import process_video
+        from bytetrack.compare_resolution_yolov11_bytetrack import process_video
 
         # VideoCapture設定
         mock_vid_cap.return_value.isOpened.return_value = True
@@ -289,9 +287,7 @@ class TestComplexFunctions:
         mock_process.return_value.memory_info.return_value.rss = 100 * 1024 * 1024  # 100MB
 
         # 関数を実行
-        results = process_video(
-            "test.mp4", "out.mp4", MagicMock(), MagicMock(), 1920, 1080, 1920, 1080, False
-        )
+        results = process_video("test.mp4", "out.mp4", MagicMock(), MagicMock(), 1920, 1080, 1920, 1080, False)
 
         # 結果の検証
         assert results is not None
@@ -304,13 +300,13 @@ class TestComplexFunctions:
         mock_vid_cap.return_value.release.assert_called_once()
         mock_vid_writer.return_value.release.assert_called_once()
 
-    @patch("scripts.compare_resolution_yolov11_bytetrack.os.makedirs")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.os.path.join")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.initialize_log_file")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.YOLO")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.ByteTrack")
-    @patch("scripts.compare_resolution_yolov11_bytetrack.process_video")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.os.makedirs")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.os.path.join")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.cv2.VideoCapture")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.initialize_log_file")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.YOLO")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.ByteTrack")
+    @patch("bytetrack.compare_resolution_yolov11_bytetrack.process_video")
     def test_compare_resolutions_basic(
         self,
         mock_process_video,
@@ -322,7 +318,7 @@ class TestComplexFunctions:
         mock_makedirs,
     ):
         """compare_resolutions関数の基本的なテスト"""
-        from scripts.compare_resolution_yolov11_bytetrack import compare_resolutions
+        from bytetrack.compare_resolution_yolov11_bytetrack import compare_resolutions
 
         # VideoCapture設定
         mock_vid_cap.return_value.isOpened.return_value = True

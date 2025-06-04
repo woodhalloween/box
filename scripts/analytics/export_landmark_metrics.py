@@ -38,9 +38,7 @@ def main():
     metrics = pd.DataFrame({"frame_index": df.index, "timestamp": timestamps})
 
     # ランドマークID一覧を抽出
-    landmark_ids = sorted(
-        {int(c.split("_")[1]) for c in df.columns if c.startswith("landmark_") and c.endswith("_x")}
-    )
+    landmark_ids = sorted({int(c.split("_")[1]) for c in df.columns if c.startswith("landmark_") and c.endswith("_x")})
 
     for idx in landmark_ids:
         # 座標
