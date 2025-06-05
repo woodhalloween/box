@@ -5,6 +5,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
+import csv
 import time
 from datetime import datetime
 from pathlib import Path
@@ -104,14 +105,14 @@ def main(
         out = None
 
     # ログファイル設定
-    perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(
-        enable_perf_log, input_file, model_path, log_type="long_stay"
-    )
+    perf_log_file = initialize_perf_log(enable_perf_log, input_file, model_path, log_type="long_stay")
 
-    if perf_log_writer:
-        # 動画のプロパティ情報を追加
-        perf_log_writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
-        perf_log_writer.writerow([])
+    if enable_perf_log:
+        with open(perf_log_file, "a", newline="") as f:
+            writer = csv.writer(f)
+            # 動画のプロパティ情報を追加
+            writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
+            writer.writerow([])
 
     # 滞在時間情報を保持する辞書
     stay_info = {}
@@ -248,26 +249,28 @@ def main(
                         break
 
             # パフォーマンスログ
-            if perf_log_writer and frame_idx % max(1, int(fps)) == 0:  # 1秒に1回程度ログを取る
-                current_mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
-                total_time_ms = detection_time_ms + tracking_time_ms + stay_check_time_ms
-                perf_log_writer.writerow(
-                    [
-                        frame_idx,
-                        datetime.now().strftime("%H:%M:%S.%f")[:-3],
-                        f"{detection_time_ms:.2f}",
-                        f"{tracking_time_ms:.2f}",
-                        f"{stay_check_time_ms:.2f}",
-                        f"{total_time_ms:.2f}",
-                        num_detections,
-                        num_tracks,
-                        f"{avg_fps:.2f}",
-                        f"{current_mem_usage:.2f}",
-                        Path(model_path).name,
-                        "bytetrack",
-                        f"Stay:{stay_threshold_sec}s Move:{move_threshold_px}px",
-                    ]
-                )
+            if enable_perf_log and frame_idx % max(1, int(fps)) == 0:  # 1秒に1回程度ログを取る
+                with open(perf_log_file, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    current_mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+                    total_time_ms = detection_time_ms + tracking_time_ms + stay_check_time_ms
+                    writer.writerow(
+                        [
+                            frame_idx,
+                            datetime.now().strftime("%H:%M:%S.%f")[:-3],
+                            f"{detection_time_ms:.2f}",
+                            f"{tracking_time_ms:.2f}",
+                            f"{stay_check_time_ms:.2f}",
+                            f"{total_time_ms:.2f}",
+                            num_detections,
+                            num_tracks,
+                            f"{avg_fps:.2f}",
+                            f"{current_mem_usage:.2f}",
+                            Path(model_path).name,
+                            "bytetrack",
+                            f"Stay:{stay_threshold_sec}s Move:{move_threshold_px}px",
+                        ]
+                    )
 
             # 進捗表示 (30フレームごと)
             if frame_idx % 30 == 0:
@@ -288,8 +291,6 @@ def main(
             out.release()
         if enable_video_display:
             cv2.destroyAllWindows()
-        if perf_log_f:
-            perf_log_f.close()
         print(f"処理完了。出力ファイル: {output_file}, ログ: {perf_log_file}")
 
 
