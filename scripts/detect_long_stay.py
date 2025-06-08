@@ -309,11 +309,11 @@ class LongStayBatchProcessor:
             status = "Success"
             error_message = ""
             event_count = 0
+            rel_path = video_file.relative_to(self.input_dir)
+            output_path = self.output_dir / rel_path
 
+            should_stop = False
             try:
-                rel_path = video_file.relative_to(self.input_dir)
-                output_path = self.output_dir / rel_path
-
                 output_path.parent.mkdir(parents=True, exist_ok=True)
 
                 print(f"\n--- [{i}/{len(video_files)}] 処理中: {rel_path} ---")
@@ -323,15 +323,25 @@ class LongStayBatchProcessor:
                 )
                 print(f"--- ✓ 完了: {rel_path} ---")
 
+            except KeyboardInterrupt:
+                status = "Interrupted"
+                error_message = "User interrupted the process"
+                print("\n[中断] ユーザーによってバッチ処理が中断されました。")
+                should_stop = True
+
             except Exception as e:
                 status = "Failed"
                 error_message = str(e)
                 print(f"[エラー] {video_file.name} の処理中にエラーが発生しました: {e}")
+                should_stop = True
 
-            finally:
-                self.logger.writerow([str(rel_path), str(output_path), status, event_count, error_message])
+            self.logger.writerow([str(rel_path), str(output_path), status, event_count, error_message])
 
-        print("\n===== 全てのバッチ処理が完了しました =====")
+            if should_stop:
+                print("バッチ処理を停止します。")
+                break
+
+        print("\n===== バッチ処理が終了しました =====")
         self.log_fp.close()
 
 
