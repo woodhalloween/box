@@ -138,12 +138,18 @@ class LongStayDetector:
 
         perf_log_file = None
         if enable_perf_log:
-            model_name = Path(self.model.ckpt_path).name if hasattr(self.model, "ckpt_path") else "N/A"
+            model_name = ""
+            if hasattr(self.model, "ckpt_path") and self.model.ckpt_path:
+                model_name = Path(self.model.ckpt_path).name
+            else:
+                model_name = "yolo_model"
+
             perf_log_file = initialize_perf_log(True, input_file, model_name, log_type="long_stay")
-            with open(perf_log_file, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
-                writer.writerow([])
+            if perf_log_file:
+                with open(perf_log_file, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
+                    writer.writerow([])
 
         self.stay_info = {}
         frame_idx = 0
@@ -162,7 +168,7 @@ class LongStayDetector:
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
                 tracks, det_time, track_time, num_det, num_track, _ = process_frame_for_tracking(
-                    frame_rgb, self.model, self.tracker, conf=self.conf
+                    frame_rgb, self.model, self.tracker
                 )
 
                 self.stay_info, notifications, stay_time = update_stay_times(
@@ -202,7 +208,13 @@ class LongStayDetector:
                         writer = csv.writer(f)
                         mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
                         total_time = det_time + track_time + stay_time
-                        model_name = Path(self.model.ckpt_path).name if hasattr(self.model, "ckpt_path") else "N/A"
+
+                        model_name = ""
+                        if hasattr(self.model, "ckpt_path") and self.model.ckpt_path:
+                            model_name = Path(self.model.ckpt_path).name
+                        else:
+                            model_name = "yolo_model"
+
                         writer.writerow(
                             [
                                 frame_idx,
