@@ -12,6 +12,7 @@ from pathlib import Path
 
 import cv2
 import psutil
+from ultralytics import YOLO
 
 # 共通ユーティリティをインポート
 from src.tracking.bytetrack_utils import (
@@ -73,7 +74,7 @@ class LongStayDetector:
             conf (float): 検出の信頼度の閾値。
             enable_video_display (bool): 処理中にビデオを表示するかどうか。
         """
-        self.model = load_yolo_model(model_path, device)
+        self.model: YOLO = load_yolo_model(model_path, device)
         self.tracker = initialize_bytetrack()
         self.stay_threshold_sec = stay_threshold_sec
         self.move_threshold_px = move_threshold_px
@@ -265,7 +266,14 @@ class LongStayBatchProcessor:
     ディレクトリ内の複数の動画ファイルに対して、長時間滞在検出をバッチ処理します。
     """
 
-    def __init__(self, input_dir: Path, output_dir: Path, detector_options: dict, video_extensions: list[str] = None):
+    def __init__(
+        self,
+        input_dir: Path,
+        output_dir: Path,
+        detector_options: dict,
+        video_extensions: list[str] | None = None,
+        enable_perf_log: bool = False,
+    ):
         """
         バッチプロセッサを初期化します。
 
@@ -273,7 +281,8 @@ class LongStayBatchProcessor:
             input_dir (Path): 処理対象の動画ファイルが含まれる入力ディレクトリ。
             output_dir (Path): 処理結果を保存する出力ディレクトリ。
             detector_options (dict): LongStayDetectorに渡す設定オプションの辞書。
-            video_extensions (list[str]): 処理対象とする動画の拡張子リスト。
+            video_extensions (Optional[list[str]]): 処理対象とする動画の拡張子リスト。
+            enable_perf_log (bool): 個別のパフォーマンスログを有効にするかどうか。
         """
         if not input_dir.is_dir():
             raise ValueError(f"入力パスはディレクトリである必要があります: {input_dir}")
@@ -282,6 +291,7 @@ class LongStayBatchProcessor:
         self.output_dir = output_dir.resolve()
         self.detector_options = detector_options
         self.video_extensions = video_extensions or [".mp4", ".mov", ".avi", ".mkv"]
+        self.enable_perf_log = enable_perf_log
         self.detector = LongStayDetector(**self.detector_options)
 
         # ログファイルの設定
@@ -319,7 +329,9 @@ class LongStayBatchProcessor:
                 print(f"\n--- [{i}/{len(video_files)}] 処理中: {rel_path} ---")
 
                 event_count = self.detector.process_video(
-                    input_file=str(video_file), output_file=str(output_path), enable_perf_log=False
+                    input_file=str(video_file),
+                    output_file=str(output_path),
+                    enable_perf_log=self.enable_perf_log,
                 )
                 print(f"--- ✓ 完了: {rel_path} ---")
 
@@ -356,6 +368,9 @@ def main():
         action="store_true",
         help="パフォーマンスログをCSVファイルに保存します。（単一ファイル処理時のみ有効）",
     )
+    parser.add_argument(
+        "--enable_batch_perf_log", action="store_true", help="バッチ処理時に個別のパフォーマンスログを有効にします。"
+    )
     parser.add_argument("--enable_video_display", action="store_true", help="処理中の動画をリアルタイムで表示します。")
     parser.add_argument("--device", type=str, default="", help="推論に使用するデバイス。(例: cpu, mps, 0)")
     parser.add_argument("--stay_threshold_sec", type=float, default=5.0, help="長時間滞在と判定する閾値（秒）。")
@@ -378,7 +393,10 @@ def main():
     try:
         if input_path.is_dir():
             batch_processor = LongStayBatchProcessor(
-                input_dir=input_path, output_dir=output_path, detector_options=detector_options
+                input_dir=input_path,
+                output_dir=output_path,
+                detector_options=detector_options,
+                enable_perf_log=args.enable_batch_perf_log,
             )
             batch_processor.run()
         elif input_path.is_file():
