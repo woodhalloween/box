@@ -115,15 +115,20 @@ class LongStayDetector:
         return frame
 
     def process_video(self, input_file: str, output_file: str, enable_perf_log: bool = False):
-        """単一の動画ファイルを処理して長時間滞在を検出します。"""
+        """
+        単一の動画ファイルを処理して長時間滞在を検出します。
+
+        Returns:
+            int: 検出された長時間滞在イベントの総数。
+        """
         if not os.path.exists(input_file):
             print(f"エラー: 入力ファイルが見つかりません: {input_file}")
-            return
+            return 0
 
         cap = cv2.VideoCapture(input_file)
         if not cap.isOpened():
             print(f"エラー: 動画ファイルを開けません: {input_file}")
-            return
+            return 0
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -156,6 +161,7 @@ class LongStayDetector:
         start_time = time.time()
         last_fps_update = start_time
         fps_buffer = []
+        long_stay_event_count = 0
 
         try:
             while True:
@@ -175,6 +181,7 @@ class LongStayDetector:
                     tracks, self.stay_info, current_time, self.move_threshold_px, self.stay_threshold_sec
                 )
 
+                long_stay_event_count += len(notifications)
                 for notification in notifications:
                     print(f"Frame {frame_idx}: {notification}")
 
@@ -250,6 +257,8 @@ class LongStayDetector:
                 cv2.destroyAllWindows()
             print(f"処理完了。出力ファイル: {output_file}, ログ: {perf_log_file}")
 
+        return long_stay_event_count
+
 
 class LongStayBatchProcessor:
     """
@@ -275,9 +284,18 @@ class LongStayBatchProcessor:
         self.video_extensions = video_extensions or [".mp4", ".mov", ".avi", ".mkv"]
         self.detector = LongStayDetector(**self.detector_options)
 
+        # ログファイルの設定
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.log_file = self.output_dir / f"batch_log_{date_str}.csv"
+        self.log_fp = open(self.log_file, "w", newline="", encoding="utf-8-sig")
+        self.logger = csv.writer(self.log_fp)
+        self.logger.writerow(["relative_path", "output_path", "status", "long_stay_events", "error_message"])
+
     def run(self):
         """バッチ処理を実行します。"""
         print(f"===== バッチ処理開始: {self.input_dir} =====")
+        print(f"ログファイル: {self.log_file}")
 
         video_files = [p for p in self.input_dir.rglob("*") if p.suffix.lower() in self.video_extensions]
 
@@ -288,6 +306,10 @@ class LongStayBatchProcessor:
         print(f"{len(video_files)} 件の動画ファイルを処理します。")
 
         for i, video_file in enumerate(video_files, 1):
+            status = "Success"
+            error_message = ""
+            event_count = 0
+
             try:
                 rel_path = video_file.relative_to(self.input_dir)
                 output_path = self.output_dir / rel_path
@@ -296,16 +318,21 @@ class LongStayBatchProcessor:
 
                 print(f"\n--- [{i}/{len(video_files)}] 処理中: {rel_path} ---")
 
-                self.detector.process_video(
+                event_count = self.detector.process_video(
                     input_file=str(video_file), output_file=str(output_path), enable_perf_log=False
                 )
                 print(f"--- ✓ 完了: {rel_path} ---")
 
             except Exception as e:
+                status = "Failed"
+                error_message = str(e)
                 print(f"[エラー] {video_file.name} の処理中にエラーが発生しました: {e}")
-                continue
+
+            finally:
+                self.logger.writerow([str(rel_path), str(output_path), status, event_count, error_message])
 
         print("\n===== 全てのバッチ処理が完了しました =====")
+        self.log_fp.close()
 
 
 def main():
@@ -346,12 +373,12 @@ def main():
             batch_processor.run()
         elif input_path.is_file():
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            detector = LongStayDetector(**detector_options)
-            detector.process_video(
+            event_count = LongStayDetector(**detector_options).process_video(
                 input_file=str(input_path),
                 output_file=str(output_path),
                 enable_perf_log=args.enable_perf_log,
             )
+            print(f"検出された長時間滞在イベントの総数: {event_count}")
         else:
             print(f"エラー: 指定されたパスが見つかりません: {input_path}")
 
