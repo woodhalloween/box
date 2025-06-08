@@ -251,41 +251,110 @@ class LongStayDetector:
             print(f"処理完了。出力ファイル: {output_file}, ログ: {perf_log_file}")
 
 
+class LongStayBatchProcessor:
+    """
+    ディレクトリ内の複数の動画ファイルに対して、長時間滞在検出をバッチ処理します。
+    """
+
+    def __init__(self, input_dir: Path, output_dir: Path, detector_options: dict, video_extensions: list[str] = None):
+        """
+        バッチプロセッサを初期化します。
+
+        Args:
+            input_dir (Path): 処理対象の動画ファイルが含まれる入力ディレクトリ。
+            output_dir (Path): 処理結果を保存する出力ディレクトリ。
+            detector_options (dict): LongStayDetectorに渡す設定オプションの辞書。
+            video_extensions (list[str]): 処理対象とする動画の拡張子リスト。
+        """
+        if not input_dir.is_dir():
+            raise ValueError(f"入力パスはディレクトリである必要があります: {input_dir}")
+
+        self.input_dir = input_dir.resolve()
+        self.output_dir = output_dir.resolve()
+        self.detector_options = detector_options
+        self.video_extensions = video_extensions or [".mp4", ".mov", ".avi", ".mkv"]
+        self.detector = LongStayDetector(**self.detector_options)
+
+    def run(self):
+        """バッチ処理を実行します。"""
+        print(f"===== バッチ処理開始: {self.input_dir} =====")
+
+        video_files = [p for p in self.input_dir.rglob("*") if p.suffix.lower() in self.video_extensions]
+
+        if not video_files:
+            print("処理対象の動画ファイルが見つかりませんでした。")
+            return
+
+        print(f"{len(video_files)} 件の動画ファイルを処理します。")
+
+        for i, video_file in enumerate(video_files, 1):
+            try:
+                rel_path = video_file.relative_to(self.input_dir)
+                output_path = self.output_dir / rel_path
+
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                print(f"\n--- [{i}/{len(video_files)}] 処理中: {rel_path} ---")
+
+                self.detector.process_video(
+                    input_file=str(video_file), output_file=str(output_path), enable_perf_log=False
+                )
+                print(f"--- ✓ 完了: {rel_path} ---")
+
+            except Exception as e:
+                print(f"[エラー] {video_file.name} の処理中にエラーが発生しました: {e}")
+                continue
+
+        print("\n===== 全てのバッチ処理が完了しました =====")
+
+
 def main():
     """コマンドラインインターフェースのエントリーポイント。"""
-    parser = argparse.ArgumentParser(description="動画からByteTrackを用いて長時間滞在を検出します。")
-    parser.add_argument("--input", type=str, required=True, help="入力動画ファイルのパス。")
-    parser.add_argument("--output", type=str, default="output/tracked_video.mp4", help="出力動画ファイルのパス。")
+    parser = argparse.ArgumentParser(description="動画ファイルまたはディレクトリから長時間滞在を検出します。")
+    parser.add_argument("--input", type=str, required=True, help="入力動画ファイルまたはディレクトリのパス。")
+    parser.add_argument("--output", type=str, required=True, help="出力ファイルまたはディレクトリのパス。")
     parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLOモデルファイルのパス。")
-    parser.add_argument("--enable_perf_log", action="store_true", help="パフォーマンスログをCSVファイルに保存します。")
+    parser.add_argument(
+        "--enable_perf_log",
+        action="store_true",
+        help="パフォーマンスログをCSVファイルに保存します。（単一ファイル処理時のみ有効）",
+    )
     parser.add_argument("--enable_video_display", action="store_true", help="処理中の動画をリアルタイムで表示します。")
-    parser.add_argument(
-        "--device", type=str, default="", help="推論に使用するデバイスを指定します。(例: cpu, mps, 0 for cuda:0)"
-    )
+    parser.add_argument("--device", type=str, default="", help="推論に使用するデバイス。(例: cpu, mps, 0)")
     parser.add_argument("--stay_threshold_sec", type=float, default=5.0, help="長時間滞在と判定する閾値（秒）。")
-    parser.add_argument(
-        "--move_threshold_px", type=float, default=30.0, help="移動と判定するためのピクセル単位の閾値。"
-    )
+    parser.add_argument("--move_threshold_px", type=float, default=30.0, help="移動と判定するピクセル単位の閾値。")
     parser.add_argument("--conf", type=float, default=0.3, help="YOLOの検出信頼度の閾値。")
     args = parser.parse_args()
 
-    if args.output:
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+
+    detector_options = {
+        "model_path": args.model,
+        "device": args.device,
+        "stay_threshold_sec": args.stay_threshold_sec,
+        "move_threshold_px": args.move_threshold_px,
+        "conf": args.conf,
+        "enable_video_display": args.enable_video_display,
+    }
 
     try:
-        detector = LongStayDetector(
-            model_path=args.model,
-            device=args.device,
-            stay_threshold_sec=args.stay_threshold_sec,
-            move_threshold_px=args.move_threshold_px,
-            conf=args.conf,
-            enable_video_display=args.enable_video_display,
-        )
-        detector.process_video(
-            input_file=args.input,
-            output_file=args.output,
-            enable_perf_log=args.enable_perf_log,
-        )
+        if input_path.is_dir():
+            batch_processor = LongStayBatchProcessor(
+                input_dir=input_path, output_dir=output_path, detector_options=detector_options
+            )
+            batch_processor.run()
+        elif input_path.is_file():
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            detector = LongStayDetector(**detector_options)
+            detector.process_video(
+                input_file=str(input_path),
+                output_file=str(output_path),
+                enable_perf_log=args.enable_perf_log,
+            )
+        else:
+            print(f"エラー: 指定されたパスが見つかりません: {input_path}")
+
     except Exception as e:
         print(f"エラーが発生しました: {e}")
 
