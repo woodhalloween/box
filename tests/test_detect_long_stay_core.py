@@ -57,7 +57,9 @@ def dummy_video(tmp_path, dummy_frame):
     return str(path)
 
 
-def dummy_draw_tracking_info(frame, *args, **kwargs):
+# def dummy_draw_tracking_info(frame, *args, **kwargs):
+#     return frame
+def dummy_draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
     return frame
 
 
@@ -193,54 +195,55 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
         assert ["# Video Properties", "640x480", "10.0fps"] in rows
 
 
-# @patch("cv2.VideoCapture", new=MockVideoCapture)
-# @patch("os.path.exists", return_value=True)  # ← This is crucial
-# def test_perf_log_frame_level_metrics_written(tmp_path):
-#     # Prepare a fake VideoCapture that returns two frames
-#     dummy_frame = np.zeros((240, 320, 3), dtype=np.uint8)
-#     mock_cap = MagicMock()
-#     mock_cap.isOpened.return_value = True
-#     mock_cap.get.side_effect = lambda prop: {
-#         cv2.CAP_PROP_FRAME_WIDTH: 320,
-#         cv2.CAP_PROP_FRAME_HEIGHT: 240,
-#         cv2.CAP_PROP_FPS: 1.0,
-#         cv2.CAP_PROP_FRAME_COUNT: 2
-#     }[prop]
-#     # read: two frames then stop
-#     mock_cap.read.side_effect = [(True, dummy_frame), (True, dummy_frame), (False, None)]
-#
-#     # Patch VideoCapture
-#     with patch("cv2.VideoCapture", return_value=mock_cap), \
-#             patch("cv2.imshow"), patch("cv2.waitKey", return_value=27):
-#         log_path = tmp_path / "perf_log.csv"
-#
-#         def dummy_perf_log_fn(enable, input_file, model_path, log_type="long_stay"):
-#             return str(log_path)
-#
-#         run_long_stay_detection(
-#             input_path="any.mp4",  # existence not checked because VideoCapture is patched
-#             output_path=None,
-#             model_path="model.pt",
-#             device="cpu",
-#             stay_threshold=2.0,
-#             move_threshold=10.0,
-#             conf=0.3,
-#             enable_perf_log=True,
-#             enable_video_display=True,
-#             draw_fn=dummy_draw_tracking_info,
-#             load_model_fn=dummy_load_yolo_model,
-#             tracker_init_fn=dummy_initialize_bytetrack,
-#             perf_log_fn=dummy_perf_log_fn,
-#             process_frame_fn=dummy_process_frame,
-#             update_stay_fn=dummy_update_stay_times,
-#         )
-#
-#     # Assert that per-frame log entries exist
-#     assert log_path.exists()
-#     with open(log_path, newline="") as f:
-#         rows = list(csv.reader(f))
-#         # Expect metadata + empty + two frame-level rows
-#         data_rows = [r for r in rows if r and not r[0].startswith("#")]
-#         # First two rows are metadata and blank; subsequent rows should start with '1' and '2'
-#         assert any(r[0] == "1" for r in data_rows), f"Rows: {rows}"
-#         assert any(r[0] == "2" for r in data_rows), f"Rows: {rows}"
+@patch("cv2.VideoCapture", new=MockVideoCapture)
+def test_perf_log_frame_level_metrics_written(tmp_path):
+    dummy_frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+    mock_cap.get.side_effect = lambda prop: {
+        cv2.CAP_PROP_FRAME_WIDTH: 320,
+        cv2.CAP_PROP_FRAME_HEIGHT: 240,
+        cv2.CAP_PROP_FPS: 1.0,
+        cv2.CAP_PROP_FRAME_COUNT: 2,
+    }[prop]
+    mock_cap.read.side_effect = [(True, dummy_frame), (True, dummy_frame), (False, None)]
+
+    # 🔧 Generate log_path *before* patching os.path.exists
+    log_path = tmp_path / "perf_log.csv"
+
+    def dummy_perf_log_fn(enable, input_file, model_path, log_type="long_stay"):
+        return str(log_path)
+
+    with (
+        patch("cv2.VideoCapture", return_value=mock_cap),
+        patch("cv2.imshow"),
+        patch("cv2.waitKey", side_effect=[-1, -1, 27]),
+        patch("os.path.exists", return_value=True),
+    ):  # only affects inside run_long_stay_detection
+        run_long_stay_detection(
+            input_path="any.mp4",
+            output_path=None,
+            model_path="model.pt",
+            device="cpu",
+            stay_threshold=2.0,
+            move_threshold=10.0,
+            conf=0.3,
+            enable_perf_log=True,
+            enable_video_display=True,
+            draw_fn=dummy_draw_tracking_info,
+            load_model_fn=dummy_load_yolo_model,
+            tracker_init_fn=dummy_initialize_bytetrack,
+            perf_log_fn=dummy_perf_log_fn,
+            process_frame_fn=dummy_process_frame,
+            update_stay_fn=dummy_update_stay_times,
+        )
+
+    # ✅ Now this log_path is real and refers to the real file
+    assert log_path.exists()
+    with open(log_path, newline="") as f:
+        rows = list(csv.reader(f))
+        print(f"rows: {rows}")
+        data_rows = [r for r in rows if r and not r[0].strip().startswith("#")]
+        print(f"data_rows: {data_rows}")
+        assert any(r[0].strip() == "1" for r in data_rows), f"Rows: {rows}"
+        assert any(r[0].strip() == "2" for r in data_rows), f"Rows: {rows}"

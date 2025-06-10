@@ -19,13 +19,13 @@ def run_long_stay_detection(
     move_threshold,
     conf,
     enable_perf_log,
-    enable_video_display,
     draw_fn,
     load_model_fn,
     tracker_init_fn,
     perf_log_fn,
     process_frame_fn,
     update_stay_fn,
+    enable_video_display=True,  # critical
 ):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input video file not found: {input_path}")
