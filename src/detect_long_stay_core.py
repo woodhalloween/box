@@ -46,6 +46,10 @@ def run_long_stay_detection(
     if output_path:
         fourcc = cv2.VideoWriter_fourcc(*"avc1")
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        if not out.isOpened():
+            # fallback for environments without H.264
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     perf_log_file = perf_log_fn(enable_perf_log, input_path, model_path, log_type="long_stay")
 
