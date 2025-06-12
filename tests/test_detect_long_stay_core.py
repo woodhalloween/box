@@ -10,73 +10,7 @@ import pytest
 from src.detect_long_stay_core import run_long_stay_detection
 
 
-def interrupting_read_generator():
-    """Yields one frame, then raises KeyboardInterrupt."""
-    yield True, np.zeros((480, 640, 3), dtype=np.uint8)
-    raise KeyboardInterrupt
-
-
-class InterruptingCapture:
-    def __init__(self, path):
-        self.counter = 0
-
-    def isOpened(self):  # noqa: N802
-        return True
-
-    def read(self):
-        if self.counter == 0:
-            self.counter += 1
-            return True, np.zeros((480, 640, 3), dtype=np.uint8)
-        # On the second read(), simulate Ctrl+C
-        raise KeyboardInterrupt
-
-    def get(self, prop_id):
-        # Use the numeric constants directly
-        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
-            return 640
-        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
-            return 480
-        if prop_id == cv2.CAP_PROP_FPS:
-            return 10.0
-        if prop_id == cv2.CAP_PROP_FRAME_COUNT:
-            return 2
-        return 0
-
-    def release(self):
-        pass
-
-
-class MockVideoCapture:
-    def __init__(self, path):
-        self.frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
-        self.index = 0
-        self.opened = True
-
-    def isOpened(self):  # noqa: N802
-        return self.opened
-
-    def read(self):
-        if self.index < len(self.frames):
-            frame = self.frames[self.index]
-            self.index += 1
-            return True, frame
-        return False, None
-
-    def get(self, prop_id):
-        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
-            return 640
-        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
-            return 480
-        if prop_id == cv2.CAP_PROP_FPS:
-            return 10.0
-        if prop_id == cv2.CAP_PROP_FRAME_COUNT:
-            return len(self.frames)
-        return 0
-
-    def release(self):
-        self.opened = False
-
-
+# === Fixtures ===
 @pytest.fixture
 def dummy_frame():
     return np.zeros((480, 640, 3), dtype=np.uint8)
@@ -84,7 +18,6 @@ def dummy_frame():
 
 @pytest.fixture
 def dummy_video(tmp_path, dummy_frame):
-    # Create a dummy video file for testing
     path = tmp_path / "dummy.mp4"
     out = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (640, 480))
     for _ in range(60):
@@ -93,6 +26,7 @@ def dummy_video(tmp_path, dummy_frame):
     return str(path)
 
 
+# === Dummy Components ===
 def dummy_draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
     return frame
 
@@ -123,9 +57,63 @@ def dummy_process_frame(frame, model, tracker):
     return [], 0.1, 0.1, 1, 1, None
 
 
+# === Mocked Classes ===
+class InterruptingCapture:
+    def __init__(self, path):
+        self.counter = 0
+
+    def isOpened(self):  # noqa: N802
+        return True
+
+    def read(self):
+        if self.counter == 0:
+            self.counter += 1
+            return True, np.zeros((480, 640, 3), dtype=np.uint8)
+        raise KeyboardInterrupt
+
+    def get(self, prop_id):
+        return {
+            cv2.CAP_PROP_FRAME_WIDTH: 640,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480,
+            cv2.CAP_PROP_FPS: 10.0,
+            cv2.CAP_PROP_FRAME_COUNT: 2,
+        }.get(prop_id, 0)
+
+    def release(self):
+        pass
+
+
+class MockVideoCapture:
+    def __init__(self, path):
+        self.frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
+        self.index = 0
+        self.opened = True
+
+    def isOpened(self):  # noqa: N802
+        return self.opened
+
+    def read(self):
+        if self.index < len(self.frames):
+            frame = self.frames[self.index]
+            self.index += 1
+            return True, frame
+        return False, None
+
+    def get(self, prop_id):
+        return {
+            cv2.CAP_PROP_FRAME_WIDTH: 640,
+            cv2.CAP_PROP_FRAME_HEIGHT: 480,
+            cv2.CAP_PROP_FPS: 10.0,
+            cv2.CAP_PROP_FRAME_COUNT: len(self.frames),
+        }.get(prop_id, 0)
+
+    def release(self):
+        self.opened = False
+
+
+# === Tests ===
 def test_run_long_stay_detection(dummy_video, tmp_path):
     output_file = tmp_path / "output.mp4"
-
     run_long_stay_detection(
         input_path=dummy_video,
         output_path=str(output_file),
@@ -143,7 +131,6 @@ def test_run_long_stay_detection(dummy_video, tmp_path):
         process_frame_fn=dummy_process_frame_for_tracking,
         update_stay_fn=dummy_update_stay_times,
     )
-
     assert output_file.exists()
 
 
@@ -172,13 +159,11 @@ def test_input_file_not_found():
 def test_video_file_cannot_be_opened(tmp_path):
     dummy_path = tmp_path / "dummy_invalid.mp4"
     dummy_path.write_text("not a real video")
-
     with patch("cv2.VideoCapture") as mock_cv:
         mock_cap = MagicMock()
         mock_cap.isOpened.return_value = False
         mock_cv.return_value = mock_cap
-
-        with pytest.raises(IOError) as excinfo:
+        with pytest.raises(OSError) as excinfo:
             run_long_stay_detection(
                 input_path=str(dummy_path),
                 output_path=None,
@@ -205,7 +190,7 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
     def dummy_perf_log_fn(enable, input_file, model_path, log_type="long_stay"):
         return str(dummy_log)
 
-    with patch("cv2.imshow"), patch("cv2.waitKey", return_value=27):  # Prevent window rendering
+    with patch("cv2.imshow"), patch("cv2.waitKey", return_value=27):
         run_long_stay_detection(
             input_path=dummy_video,
             output_path=None,
@@ -215,7 +200,7 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
             move_threshold=10.0,
             conf=0.3,
             enable_perf_log=True,
-            enable_video_display=True,  # Force avg_fps to be computed
+            enable_video_display=True,
             draw_fn=lambda frame, *args, **kwargs: frame,
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
@@ -223,7 +208,6 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
             process_frame_fn=lambda f, m, t: ([], 0.1, 0.1, 0, 0, None),
             update_stay_fn=lambda t, s, c, m, st: ({}, [], 0.05),
         )
-
     with open(dummy_log, newline="") as f:
         rows = list(csv.reader(f))
         assert ["# Video Properties", "640x480", "10.0fps"] in rows
@@ -241,8 +225,6 @@ def test_perf_log_frame_level_metrics_written(tmp_path):
         cv2.CAP_PROP_FRAME_COUNT: 2,
     }[prop]
     mock_cap.read.side_effect = [(True, dummy_frame), (True, dummy_frame), (False, None)]
-
-    # 🔧 Generate log_path *before* patching os.path.exists
     log_path = tmp_path / "perf_log.csv"
 
     def dummy_perf_log_fn(enable, input_file, model_path, log_type="long_stay"):
@@ -253,7 +235,7 @@ def test_perf_log_frame_level_metrics_written(tmp_path):
         patch("cv2.imshow"),
         patch("cv2.waitKey", side_effect=[-1, -1, 27]),
         patch("os.path.exists", return_value=True),
-    ):  # only affects inside run_long_stay_detection
+    ):
         run_long_stay_detection(
             input_path="any.mp4",
             output_path=None,
@@ -271,30 +253,23 @@ def test_perf_log_frame_level_metrics_written(tmp_path):
             process_frame_fn=dummy_process_frame,
             update_stay_fn=dummy_update_stay_times,
         )
-
-    # ✅ Now this log_path is real and refers to the real file
     assert log_path.exists()
     with open(log_path, newline="") as f:
         rows = list(csv.reader(f))
-        print(f"rows: {rows}")
         data_rows = [r for r in rows if r and not r[0].strip().startswith("#")]
-        print(f"data_rows: {data_rows}")
-        assert any(r[0].strip() == "1" for r in data_rows), f"Rows: {rows}"
-        assert any(r[0].strip() == "2" for r in data_rows), f"Rows: {rows}"
+        assert any(r[0].strip() == "1" for r in data_rows)
+        assert any(r[0].strip() == "2" for r in data_rows)
 
 
 @pytest.mark.usefixtures("tmp_path")
 def test_keyboard_interrupt_path(tmp_path):
-    # Create a dummy "file" so os.path.exists returns True
     dummy_input = tmp_path / "dummy_interrupt.mp4"
     dummy_input.write_text("fake")
-
     with (
         patch("cv2.VideoCapture", new=InterruptingCapture),
         patch("os.path.exists", return_value=True),
         patch("builtins.print") as mock_print,
     ):
-        # Run with video display OFF so it won't break early
         run_long_stay_detection(
             input_path=str(dummy_input),
             output_path=None,
@@ -304,7 +279,7 @@ def test_keyboard_interrupt_path(tmp_path):
             move_threshold=1.0,
             conf=0.3,
             enable_perf_log=False,
-            enable_video_display=False,  # << disable display loop
+            enable_video_display=False,
             draw_fn=lambda f, *a, **k: f,
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
@@ -312,9 +287,5 @@ def test_keyboard_interrupt_path(tmp_path):
             process_frame_fn=lambda f, m, t: ([], 0.1, 0.1, 0, 0, None),
             update_stay_fn=lambda t, s, c, m, st: ({}, [], 0.05),
         )
-
-    # Check that the interrupt message was printed
     printed = [call.args[0] for call in mock_print.call_args_list]
-    assert any(
-        "処理がユーザーによって中断されました。" in line for line in printed
-    ), f"Expected interrupt message, got:\n{printed}"
+    assert any("処理がユーザーによって中断されました。" in line for line in printed)
