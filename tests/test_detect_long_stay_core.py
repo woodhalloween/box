@@ -10,6 +10,42 @@ import pytest
 from src.detect_long_stay_core import run_long_stay_detection
 
 
+def interrupting_read_generator():
+    """Yields one frame, then raises KeyboardInterrupt."""
+    yield True, np.zeros((480, 640, 3), dtype=np.uint8)
+    raise KeyboardInterrupt
+
+
+class InterruptingCapture:
+    def __init__(self, path):
+        self.counter = 0
+
+    def isOpened(self):  # noqa: N802
+        return True
+
+    def read(self):
+        if self.counter == 0:
+            self.counter += 1
+            return True, np.zeros((480, 640, 3), dtype=np.uint8)
+        # On the second read(), simulate Ctrl+C
+        raise KeyboardInterrupt
+
+    def get(self, prop_id):
+        # Use the numeric constants directly
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
+            return 640
+        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            return 480
+        if prop_id == cv2.CAP_PROP_FPS:
+            return 10.0
+        if prop_id == cv2.CAP_PROP_FRAME_COUNT:
+            return 2
+        return 0
+
+    def release(self):
+        pass
+
+
 class MockVideoCapture:
     def __init__(self, path):
         self.frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
@@ -247,3 +283,40 @@ def test_perf_log_frame_level_metrics_written(tmp_path):
         print(f"data_rows: {data_rows}")
         assert any(r[0].strip() == "1" for r in data_rows), f"Rows: {rows}"
         assert any(r[0].strip() == "2" for r in data_rows), f"Rows: {rows}"
+
+
+@pytest.mark.usefixtures("tmp_path")
+def test_keyboard_interrupt_path(tmp_path):
+    # Create a dummy "file" so os.path.exists returns True
+    dummy_input = tmp_path / "dummy_interrupt.mp4"
+    dummy_input.write_text("fake")
+
+    with (
+        patch("cv2.VideoCapture", new=InterruptingCapture),
+        patch("os.path.exists", return_value=True),
+        patch("builtins.print") as mock_print,
+    ):
+        # Run with video display OFF so it won't break early
+        run_long_stay_detection(
+            input_path=str(dummy_input),
+            output_path=None,
+            model_path="dummy_model.pt",
+            device="cpu",
+            stay_threshold=1.0,
+            move_threshold=1.0,
+            conf=0.3,
+            enable_perf_log=False,
+            enable_video_display=False,  # << disable display loop
+            draw_fn=lambda f, *a, **k: f,
+            load_model_fn=lambda p, d: "model",
+            tracker_init_fn=lambda: "tracker",
+            perf_log_fn=lambda *a, **k: "/dev/null",
+            process_frame_fn=lambda f, m, t: ([], 0.1, 0.1, 0, 0, None),
+            update_stay_fn=lambda t, s, c, m, st: ({}, [], 0.05),
+        )
+
+    # Check that the interrupt message was printed
+    printed = [call.args[0] for call in mock_print.call_args_list]
+    assert any(
+        "処理がユーザーによって中断されました。" in line for line in printed
+    ), f"Expected interrupt message, got:\n{printed}"
