@@ -141,7 +141,7 @@ class FFmpegBatchProcessor:
         while attempt <= self.retries:
             attempt += 1
             try:
-                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                subprocess.run(cmd, capture_output=True, text=True, check=True)
                 success = True
                 break
             except subprocess.CalledProcessError:
