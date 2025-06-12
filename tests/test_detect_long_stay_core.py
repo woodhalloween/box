@@ -93,8 +93,6 @@ def dummy_video(tmp_path, dummy_frame):
     return str(path)
 
 
-# def dummy_draw_tracking_info(frame, *args, **kwargs):
-#     return frame
 def dummy_draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
     return frame
 
