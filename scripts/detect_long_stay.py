@@ -245,7 +245,8 @@ class LongStayDetector:
                     elapsed = time.time() - start_time
                     speed = frame_idx / elapsed if elapsed > 0 else 0
                     print(
-                        f"進捗: {frame_idx}/{frame_count} ({frame_idx / frame_count * 100:.1f}%) | 処理速度: {speed:.2f} FPS"
+                        f"進捗: {frame_idx}/{frame_count} ({frame_idx / frame_count * 100:.1f}%) | "
+                        f"処理速度: {speed:.2f} FPS"
                     )
 
         except KeyboardInterrupt:
@@ -298,7 +299,7 @@ class LongStayBatchProcessor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.log_file = self.output_dir / f"batch_log_{date_str}.csv"
-        self.log_fp = open(self.log_file, "w", newline="", encoding="utf-8-sig")
+        self.log_fp = open(self.log_file, "w", newline="", encoding="utf-8-sig")  # noqa: SIM115
         self.logger = csv.writer(self.log_fp)
         self.logger.writerow(["relative_path", "output_path", "status", "long_stay_events", "error_message"])
 

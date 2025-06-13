@@ -44,6 +44,10 @@ class FFmpegBatchProcessor:
         self.log_fp = None
         self.logger = None
 
+    def __enter__(self):
+        """
+        Enter the context, opening the log file if not in dry-run mode.
+        """
         if not self.dry_run:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -53,6 +57,14 @@ class FFmpegBatchProcessor:
             self.logger.writerow(
                 ["relative_path", "original_MB", "resized_MB", "status", "attempts", "applied_filters"]
             )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit the context, closing the log file handle if it's open.
+        """
+        if self.log_fp:
+            self.log_fp.close()
 
     def _parse_mode_string(self, mode_str: str) -> list[str]:
         """
@@ -204,13 +216,6 @@ class FFmpegBatchProcessor:
                     ]
                 )
 
-    def close(self):
-        """
-        Close the log file handle if open.
-        """
-        if self.log_fp:
-            self.log_fp.close()
-
 
 def main():
     """
@@ -235,14 +240,10 @@ def main():
         print(f"Error: Input path does not exist: {input_path}")
         return
 
-    processor = FFmpegBatchProcessor(
+    with FFmpegBatchProcessor(
         input_path, output_path, retries=args.retries, dry_run=args.dry_run, mode=args.mode
-    )
-
-    try:
+    ) as processor:
         processor.process_all()
-    finally:
-        processor.close()
 
 
 if __name__ == "__main__":
