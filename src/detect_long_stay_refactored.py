@@ -4,8 +4,8 @@
 import argparse
 from pathlib import Path
 
-from src.detect_long_stay_core import run_long_stay_detection
-from src.tracking.bytetrack_utils import (
+from detect_long_stay_core import run_long_stay_detection
+from tracking.bytetrack_utils import (
     draw_tracking_info,
     initialize_bytetrack,
     initialize_perf_log,
