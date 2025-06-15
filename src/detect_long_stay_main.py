@@ -1,4 +1,4 @@
-# detect_long_stay_refactored.py
+# detect_long_stay_main.py
 # 🖥️ Refactored by Daisy for maximal pytest testability and modularity
 
 import argparse

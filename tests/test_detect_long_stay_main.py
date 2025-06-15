@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.detect_long_stay_refactored import main, parse_arguments
+from src.detect_long_stay_main import main, parse_arguments
 
 
 def test_parse_arguments_defaults(monkeypatch):
