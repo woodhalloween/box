@@ -78,7 +78,7 @@ def test_main_traversal_with_minimum_args(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["prog", "--input", "input.mp4"])
 
     with (
-        patch("src.detect_long_stay_refactored.run_long_stay_detection") as mock_run,
+        patch("src.detect_long_stay_main.run_long_stay_detection") as mock_run,
         patch.object(Path, "mkdir") as mock_mkdir,
     ):
         main()
@@ -125,7 +125,7 @@ def test_main_traversal_with_all_args(monkeypatch):
     )
 
     with (
-        patch("src.detect_long_stay_refactored.run_long_stay_detection") as mock_run,
+        patch("src.detect_long_stay_main.run_long_stay_detection") as mock_run,
         patch.object(Path, "mkdir") as mock_mkdir,
     ):
         main()
