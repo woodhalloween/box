@@ -26,27 +26,27 @@ from src.tracking.bytetrack_utils import (
 
 # Skeleton structure for YOLO keypoints visualization
 # (kept for potential future use, but not primary focus)
-SKELETON = [
-    (0, 1),
-    (1, 3),
-    (0, 2),
-    (1, 2),
-    (2, 4),
-    (0, 5),
-    (0, 6),
-    (5, 7),
-    (7, 9),
-    (6, 8),
-    (8, 10),
-    (5, 6),
-    (5, 11),
-    (6, 12),
-    (11, 12),
-    (11, 13),
-    (13, 15),
-    (12, 14),
-    (14, 16),
-]
+# SKELETON = [
+#     (0, 1),
+#     (1, 3),
+#     (0, 2),
+#     (1, 2),
+#     (2, 4),
+#     (0, 5),
+#     (0, 6),
+#     (5, 7),
+#     (7, 9),
+#     (6, 8),
+#     (8, 10),
+#     (5, 6),
+#     (5, 11),
+#     (6, 12),
+#     (11, 12),
+#     (11, 13),
+#     (13, 15),
+#     (12, 14),
+#     (14, 16),
+# ]
 
 
 class LongStayDetector:
@@ -62,6 +62,7 @@ class LongStayDetector:
         move_threshold_px: float = 30.0,
         conf: float = 0.3,
         enable_video_display: bool = False,
+        enable_pose: bool = False,
     ):
         """
         検出器を初期化します。
@@ -73,6 +74,7 @@ class LongStayDetector:
             move_threshold_px (float): 滞在タイマーをリセットするためのピクセル単位の移動閾値。
             conf (float): 検出の信頼度の閾値。
             enable_video_display (bool): 処理中にビデオを表示するかどうか。
+            enable_pose (bool): YOLO-Poseによる姿勢推定を有効にするかどうか。
         """
         model = load_yolo_model(model_path, device)
         if model is None:
@@ -83,6 +85,9 @@ class LongStayDetector:
         self.move_threshold_px = move_threshold_px
         self.conf = conf
         self.enable_video_display = enable_video_display
+        self.enable_pose = enable_pose
+        if self.enable_pose:
+            print("姿勢推定モードが有効です。")
         self.stay_info = {}
 
     def _draw_overlay(self, frame, frame_idx, frame_count, avg_fps, perf_stats, object_counts):
@@ -177,8 +182,8 @@ class LongStayDetector:
                 current_time = time.time()
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-                tracks, det_time, track_time, num_det, num_track, _ = process_frame_for_tracking(
-                    frame_rgb, self.model, self.tracker
+                tracks, det_time, track_time, num_det, num_track, keypoints = process_frame_for_tracking(
+                    frame_rgb, self.model, self.tracker, self.conf, self.enable_pose
                 )
 
                 self.stay_info, notifications, stay_time = update_stay_times(
@@ -190,7 +195,14 @@ class LongStayDetector:
                     print(f"Frame {frame_idx}: {notification}")
 
                 if out or self.enable_video_display:
-                    frame_bgr = draw_tracking_info(frame_bgr, tracks, show_duration=True, stay_info=self.stay_info)
+                    frame_bgr = draw_tracking_info(
+                        frame_bgr,
+                        tracks,
+                        keypoints=keypoints,
+                        enable_pose=self.enable_pose,
+                        show_duration=True,
+                        stay_info=self.stay_info,
+                    )
 
                     current_fps = 1.0 / (time.time() - last_fps_update) if (time.time() - last_fps_update) > 0 else 0
                     if len(fps_buffer) > 10:
@@ -380,6 +392,9 @@ def main():
     parser.add_argument("--stay_threshold_sec", type=float, default=5.0, help="長時間滞在と判定する閾値（秒）。")
     parser.add_argument("--move_threshold_px", type=float, default=30.0, help="移動と判定するピクセル単位の閾値。")
     parser.add_argument("--conf", type=float, default=0.3, help="YOLOの検出信頼度の閾値。")
+    parser.add_argument(
+        "--enable_pose", action="store_true", help="YOLO-Poseによる姿勢推定を有効にし、骨格を描画します。"
+    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -392,6 +407,7 @@ def main():
         "move_threshold_px": args.move_threshold_px,
         "conf": args.conf,
         "enable_video_display": args.enable_video_display,
+        "enable_pose": args.enable_pose,
     }
 
     try:
