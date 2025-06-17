@@ -3,6 +3,7 @@ import csv
 import re
 import subprocess
 import time
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
@@ -43,6 +44,7 @@ class FFmpegBatchProcessor:
         self.global_filters = self._parse_mode_string(mode) if mode else None
         self.log_fp = None
         self.logger = None
+        self._exit_stack = ExitStack()
 
     def __enter__(self):
         """
@@ -52,7 +54,7 @@ class FFmpegBatchProcessor:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             date_str = datetime.now().strftime("%Y%m%d-%H%M%S")
             self.log_file = self.output_dir / f"ffmpeg_log_{date_str}.csv"
-            self.log_fp = open(self.log_file, "w", newline="")
+            self.log_fp = self._exit_stack.enter_context(open(self.log_file, "w", newline=""))  # noqa: SIM115
             self.logger = csv.writer(self.log_fp)
             self.logger.writerow(
                 ["relative_path", "original_MB", "resized_MB", "status", "attempts", "applied_filters"]
@@ -63,8 +65,7 @@ class FFmpegBatchProcessor:
         """
         Exit the context, closing the log file handle if it's open.
         """
-        if self.log_fp:
-            self.log_fp.close()
+        self._exit_stack.close()
 
     def _parse_mode_string(self, mode_str: str) -> list[str]:
         """

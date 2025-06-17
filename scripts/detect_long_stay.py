@@ -74,7 +74,10 @@ class LongStayDetector:
             conf (float): 検出の信頼度の閾値。
             enable_video_display (bool): 処理中にビデオを表示するかどうか。
         """
-        self.model: YOLO = load_yolo_model(model_path, device)
+        model = load_yolo_model(model_path, device)
+        if model is None:
+            raise ValueError(f"YOLOモデルのロードに失敗しました: {model_path}")
+        self.model: YOLO = model
         self.tracker = initialize_bytetrack()
         self.stay_threshold_sec = stay_threshold_sec
         self.move_threshold_px = move_threshold_px
