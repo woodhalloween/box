@@ -1,5 +1,8 @@
 import os
 import sys
+from collections import deque
+from datetime import datetime
+from pathlib import Path
 
 # スクリプトの親ディレクトリの親ディレクトリ (プロジェクトルート) をsys.pathに追加
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -7,8 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
 import csv
 import time
-from datetime import datetime
-from pathlib import Path
 
 import cv2
 import psutil
@@ -123,54 +124,60 @@ class LongStayDetector:
 
         return frame
 
-    def process_video(self, input_file: str, output_file: str, enable_perf_log: bool = False):
-        """
-        単一の動画ファイルを処理して長時間滞在を検出します。
-
-        Returns:
-            int: 検出された長時間滞在イベントの総数。
-        """
+    def process_video(
+        self,
+        input_file: str,
+        output_file: str | None,
+        enable_perf_log: bool = False,
+    ) -> None:
+        """指定された動画ファイルを処理し、滞留を検出する"""
         if not os.path.exists(input_file):
             print(f"エラー: 入力ファイルが見つかりません: {input_file}")
-            return 0
+            return
 
         cap = cv2.VideoCapture(input_file)
         if not cap.isOpened():
             print(f"エラー: 動画ファイルを開けません: {input_file}")
-            return 0
+            return
 
+        # 動画プロパティの取得
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"入力動画: {width}x{height}, {fps}fps, {frame_count}フレーム")
+        print(f"入力動画: {width}x{height}, {fps:.2f}fps, {frame_count}フレーム")
 
+        # 出力動画ライターの初期化
         out = None
         if output_file:
             fourcc = cv2.VideoWriter_fourcc(*"avc1")
             out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
+        # パフォーマンスログの初期化
         perf_log_file = None
         if enable_perf_log:
-            model_name = ""
-            if hasattr(self.model, "ckpt_path") and self.model.ckpt_path:
-                model_name = Path(self.model.ckpt_path).name
-            else:
-                model_name = "yolo_model"
-
+            model_name = (
+                Path(self.model.ckpt_path).name
+                if hasattr(self.model, "ckpt_path") and self.model.ckpt_path
+                else "yolo_model"
+            )
             perf_log_file = initialize_perf_log(True, input_file, model_name, log_type="long_stay")
             if perf_log_file:
-                with open(perf_log_file, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
-                    writer.writerow([])
+                try:
+                    with open(perf_log_file, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps:.2f}fps"])
+                        writer.writerow([])
+                except OSError as e:
+                    print(f"警告: パフォーマンスログファイルに書き込めません: {e}")
+                    perf_log_file = None  # 書き込めない場合は無効化
 
-        self.stay_info = {}
+        # 処理ループの変数を初期化
+        self.stay_info.clear()
         frame_idx = 0
-        start_time = time.time()
-        last_fps_update = start_time
-        fps_buffer = []
+        fps_buffer = deque(maxlen=30)  # FPS計算用のバッファ
         long_stay_event_count = 0
+        avg_fps = 0.0
 
         try:
             while True:
@@ -179,21 +186,24 @@ class LongStayDetector:
                     break
 
                 frame_idx += 1
-                current_time = time.time()
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                loop_start_time = time.time()
 
+                # メインの処理
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 tracks, det_time, track_time, num_det, num_track, keypoints = process_frame_for_tracking(
                     frame_rgb, self.model, self.tracker, self.conf, self.enable_pose
                 )
-
                 self.stay_info, notifications, stay_time = update_stay_times(
-                    tracks, self.stay_info, current_time, self.move_threshold_px, self.stay_threshold_sec
+                    tracks, self.stay_info, loop_start_time, self.move_threshold_px, self.stay_threshold_sec
                 )
 
-                long_stay_event_count += len(notifications)
-                for notification in notifications:
-                    print(f"Frame {frame_idx}: {notification}")
+                # 滞留イベントの記録と通知
+                if notifications:
+                    long_stay_event_count += len(notifications)
+                    for notification in notifications:
+                        print(f"Frame {frame_idx}: {notification}")
 
+                # 描画処理
                 if out or self.enable_video_display:
                     frame_bgr = draw_tracking_info(
                         frame_bgr,
@@ -203,78 +213,80 @@ class LongStayDetector:
                         show_duration=True,
                         stay_info=self.stay_info,
                     )
-
-                    current_fps = 1.0 / (time.time() - last_fps_update) if (time.time() - last_fps_update) > 0 else 0
-                    if len(fps_buffer) > 10:
-                        fps_buffer.pop(0)
-                    fps_buffer.append(current_fps)
-                    avg_fps = sum(fps_buffer) / len(fps_buffer) if fps_buffer else 0
-                    last_fps_update = time.time()
-
                     perf_stats = {"detection": det_time, "tracking": track_time, "stay_check": stay_time}
                     object_counts = {"detected": num_det, "tracked": num_track}
-
                     frame_bgr = self._draw_overlay(
                         frame_bgr, frame_idx, frame_count, avg_fps, perf_stats, object_counts
                     )
-
                     if out:
                         out.write(frame_bgr)
-
                     if self.enable_video_display:
                         cv2.imshow("Long Stay Detection", frame_bgr)
                         if cv2.waitKey(1) & 0xFF == 27:  # ESC
+                            print("処理がユーザーによって中断されました。")
                             break
 
+                # FPS計算
+                loop_time = time.time() - loop_start_time
+                if loop_time > 0:
+                    fps_buffer.append(1.0 / loop_time)
+                    avg_fps = sum(fps_buffer) / len(fps_buffer)
+
+                # パフォーマンスログ書き込み
                 if perf_log_file and frame_idx % max(1, int(fps or 1)) == 0:
-                    with open(perf_log_file, "a", newline="") as f:
-                        writer = csv.writer(f)
-                        mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
-                        total_time = det_time + track_time + stay_time
+                    try:
+                        with open(perf_log_file, "a", newline="") as f:
+                            writer = csv.writer(f)
+                            mem_usage = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+                            total_time = det_time + track_time + stay_time
+                            model_name = (
+                                Path(self.model.ckpt_path).name
+                                if hasattr(self.model, "ckpt_path") and self.model.ckpt_path
+                                else "yolo_model"
+                            )
+                            writer.writerow(
+                                [
+                                    frame_idx,
+                                    datetime.now().strftime("%H:%M:%S.%f")[:-3],
+                                    f"{det_time:.2f}",
+                                    f"{track_time:.2f}",
+                                    f"{stay_time:.2f}",
+                                    f"{total_time:.2f}",
+                                    num_det,
+                                    num_track,
+                                    f"{avg_fps:.2f}",
+                                    f"{mem_usage:.2f}",
+                                    model_name,
+                                    "bytetrack",
+                                ]
+                            )
+                    except OSError as e:
+                        print(f"警告: パフォーマンスログファイルへの書き込み中にエラーが発生しました: {e}")
+                        perf_log_file = None  # エラー発生後は無効化
 
-                        model_name = ""
-                        if hasattr(self.model, "ckpt_path") and self.model.ckpt_path:
-                            model_name = Path(self.model.ckpt_path).name
-                        else:
-                            model_name = "yolo_model"
-
-                        writer.writerow(
-                            [
-                                frame_idx,
-                                datetime.now().strftime("%H:%M:%S.%f")[:-3],
-                                f"{det_time:.2f}",
-                                f"{track_time:.2f}",
-                                f"{stay_time:.2f}",
-                                f"{total_time:.2f}",
-                                num_det,
-                                num_track,
-                                f"{avg_fps:.2f}",
-                                f"{mem_usage:.2f}",
-                                model_name,
-                                "bytetrack",
-                                f"Stay:{self.stay_threshold_sec}s Move:{self.move_threshold_px}px",
-                            ]
-                        )
-
+                # 進捗表示
                 if frame_idx % 30 == 0:
-                    elapsed = time.time() - start_time
-                    speed = frame_idx / elapsed if elapsed > 0 else 0
                     print(
-                        f"進捗: {frame_idx}/{frame_count} ({frame_idx / frame_count * 100:.1f}%) | "
-                        f"処理速度: {speed:.2f} FPS"
+                        f"進捗: {frame_idx}/{frame_count} フレーム "
+                        f"({100 * frame_idx / frame_count:.1f}%) - "
+                        f"FPS: {avg_fps:.1f}"
                     )
-
-        except KeyboardInterrupt:
-            print("\n処理がユーザーによって中断されました。")
         finally:
+            # リソースの解放
             cap.release()
             if out:
                 out.release()
             if self.enable_video_display:
                 cv2.destroyAllWindows()
-            print(f"処理完了。出力ファイル: {output_file}, ログ: {perf_log_file}")
 
-        return long_stay_event_count
+            # 最終サマリーの表示
+            print(f"\n処理完了: {Path(input_file).name}")
+            print(f"検出された長時間滞在イベントの総数: {long_stay_event_count}")
+            if output_file:
+                print(f"出力ファイル: {output_file}")
+            if perf_log_file:
+                print(f"パフォーマンスログ: {perf_log_file}")
+            print("-" * 50)
 
 
 class LongStayBatchProcessor:
