@@ -145,7 +145,7 @@ def process_frame_for_tracking(frame_rgb, model, tracker, conf=0.3, enable_pose=
             cls = int(boxes[i].cls.cpu().numpy()[0])
 
             # [x1, y1, x2, y2, conf, class]の形式
-            dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
+            dets_for_tracker.append([*box, conf, cls])
 
         dets_for_tracker = np.array(dets_for_tracker)
     else:
