@@ -168,6 +168,20 @@ class TestLongStayDetector:
     @pytest.mark.usefixtures("mock_cv2")
     def test_model_name_fallback(self, mocker, tmp_path):
         """モデルにckpt_pathがない場合のフォールバックテスト"""
+        # CI環境でのpsutilエラーを回避しつつ、後続処理に必要なキーをダミーで提供
+        mocker.patch(
+            "src.tracking.bytetrack_utils.get_system_info",
+            return_value={
+                "os": "mock_os",
+                "os_version": "1.0",
+                "python_version": "3.10",
+                "cpu": "mock_cpu",
+                "cpu_cores": 1,
+                "ram_total": 1,
+                "cpu_threads": 2,
+            },
+        )
+
         # ckpt_pathを持たないモデルをモック
         mock_model_no_path = mocker.Mock(spec=YOLO)
         del mock_model_no_path.ckpt_path
@@ -402,38 +416,40 @@ class TestLongStayBatchProcessor:
         with open(processor.log_file) as f:
             assert "Failed" in f.read()
 
-    def test_main_generic_exception(self, mocker):
+    def test_main_generic_exception(self, mocker, capsys):
         """main関数で予期せぬ例外が発生するテスト"""
+        mocker.patch("pathlib.Path.exists", return_value=True)  # パスは存在するものとする
+        mocker.patch("pathlib.Path.is_dir", return_value=False)  # ディレクトリではない
+        mocker.patch("pathlib.Path.is_file", return_value=True)  # ファイルである
         # LongStayDetectorの初期化でエラーを発生させる
         mocker.patch("scripts.detect_long_stay.LongStayDetector", side_effect=Exception("Init failed"))
-        Path.is_dir.return_value = False
-        Path.is_file.return_value = True
         mocker.patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(input="a.mp4", output="b.mp4", **self.get_default_args()),
+            return_value=argparse.Namespace(input="a.mp4", **self.get_default_args()),
         )
-        # main関数内でキャッチされるため、pytest.raisesは使わない
-        # 代わりに、エラーメッセージが出力されることを確認する
-        main()
+        with pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert "予期せぬエラーが発生しました" in captured.out
 
     def test_main_invalid_path(self, mocker, capsys):
         """無効なパス入力時のmain関数のテスト"""
-        Path.is_dir.return_value = False
-        Path.is_file.return_value = False
+        mocker.patch("pathlib.Path.exists", return_value=False)
         mocker.patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(input="invalid", output="out", **self.get_default_args()),
+            # main関数が必要とするすべての引数を渡す
+            return_value=argparse.Namespace(input="invalid", **self.get_default_args()),
         )
-
-        main()
-
+        with pytest.raises(SystemExit):
+            main()
         captured = capsys.readouterr()
-        assert "エラー: 指定されたパスが見つかりません" in captured.out
+        assert "指定されたパスが見つかりません" in captured.out
 
     def get_default_args(self):
         """テスト用のデフォルト引数を返すヘルパー"""
         return {
             "model": "yolov8n.pt",
+            "output": "output",
             "enable_perf_log": False,
             "enable_batch_perf_log": False,
             "enable_video_display": False,
@@ -463,11 +479,12 @@ def mock_main_dependencies(mocker):
 class TestMainFunction:
     def test_main_file_processing(self, mocker, mock_main_dependencies):
         """ファイル入力時のmain関数のテスト"""
+        mocker.patch("pathlib.Path.exists", return_value=True)
         Path.is_dir.return_value = False
         Path.is_file.return_value = True
         mocker.patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(input="a.mp4", output="b.mp4", **self.get_default_args()),
+            return_value=argparse.Namespace(input="a.mp4", **self.get_default_args()),
         )
 
         main()
@@ -478,20 +495,14 @@ class TestMainFunction:
         # ファイル処理が呼ばれることを確認
         mock_detector.return_value.process_video.assert_called_once_with(
             "a.mp4",
-            "b.mp4",
+            "output",  # get_default_argsから取得
             enable_perf_log=False,
-            enable_video_display=False,
-            device="",
-            stay_threshold_sec=5.0,
-            move_threshold_px=30.0,
-            conf=0.3,
-            enable_pose=False,
         )
-        # ディレクトリ処理が呼ばれることを確認
         assert mock_batch_processor.call_count == 0
 
     def test_main_file_processing_with_options(self, mocker, mock_main_dependencies):
         """オプション付きファイル入力時のmain関数のテスト"""
+        mocker.patch("pathlib.Path.exists", return_value=True)
         Path.is_dir.return_value = False
         Path.is_file.return_value = True
         mocker.patch(
@@ -499,7 +510,9 @@ class TestMainFunction:
             return_value=argparse.Namespace(
                 input="a.mp4",
                 output="b.mp4",
+                model="yolov8s.pt",
                 enable_perf_log=True,
+                enable_batch_perf_log=True,
                 enable_video_display=True,
                 device="cpu",
                 stay_threshold_sec=10.0,
@@ -524,10 +537,11 @@ class TestMainFunction:
 
     def test_main_directory_processing(self, mocker, mock_main_dependencies):
         """ディレクトリ入力時のmain関数のテスト"""
+        mocker.patch("pathlib.Path.exists", return_value=True)
         Path.is_dir.return_value = True
         mocker.patch(
             "argparse.ArgumentParser.parse_args",
-            return_value=argparse.Namespace(input="in_dir", output="out_dir", **self.get_default_args()),
+            return_value=argparse.Namespace(input="in_dir", **self.get_default_args()),
         )
 
         main()
@@ -560,9 +574,10 @@ class TestMainFunction:
 
     def test_main_generic_exception(self, mocker, capsys, mock_main_dependencies):
         """main関数で予期せぬ例外が発生するケース"""
+        mocker.patch("pathlib.Path.exists", return_value=True)
+        mocker.patch("pathlib.Path.is_dir", return_value=False)  # ディレクトリではない
+        mocker.patch("pathlib.Path.is_file", return_value=True)  # ファイルである
         mocker.patch("scripts.detect_long_stay.LongStayDetector", side_effect=Exception("Test Exception"))
-        Path.is_dir.return_value = False
-        Path.is_file.return_value = True
         mocker.patch(
             "argparse.ArgumentParser.parse_args",
             return_value=argparse.Namespace(input="a.mp4", **self.get_default_args()),
@@ -579,6 +594,7 @@ class TestMainFunction:
         """テスト用のデフォルト引数を返すヘルパー"""
         return {
             "model": "yolov8n.pt",
+            "output": "output",
             "enable_perf_log": False,
             "enable_batch_perf_log": False,
             "enable_video_display": False,

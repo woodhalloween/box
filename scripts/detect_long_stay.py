@@ -422,6 +422,10 @@ def main():
         "enable_pose": args.enable_pose,
     }
 
+    if not input_path.exists():
+        print(f"エラーが発生しました: 指定されたパスが見つかりません - {input_path}")
+        sys.exit(1)
+
     try:
         if input_path.is_dir():
             batch_processor = LongStayBatchProcessor(
@@ -440,10 +444,13 @@ def main():
             )
             print(f"検出された長時間滞在イベントの総数: {event_count}")
         else:
-            print(f"エラー: 指定されたパスが見つかりません: {input_path}")
+            # is_dirでもis_fileでもない場合（通常はexists()で捕捉されるが念のため）
+            print(f"エラー: 指定されたパスはファイルまたはディレクトリではありません - {input_path}")
+            sys.exit(1)
 
     except Exception as e:
-        print(f"エラーが発生しました: {e}")
+        print(f"予期せぬエラーが発生しました: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
