@@ -26,13 +26,13 @@ poetry install
 
 ```bash
 # 基本的な実行 (デフォルト設定: YOLOv8nモデル使用、滞在閾値6秒、移動閾値20ピクセル)
-poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4 --output data/output/output_video.mp4 --log_dir logs/
+poetry run python src/detect_long_stay_main.py --input data/videos/your_video.mp4 --output data/output/output_video.mp4 --enable_perf_log
 
 # モデルや閾値を指定して実行
-poetry run python scripts/detect_long_stay.py --video data/videos/your_video.mp4 --output data/output/output_video.mp4 --log_dir logs/ --yolo_model models/yolov8n-pose.pt --stay-threshold 10 --move-threshold 15
+poetry run python src/detect_long_stay_main.py --input data/videos/your_video.mp4 --output data/output/output_video.mp4 --enable_perf_log --model models/yolov8n-pose.pt --stay_threshold_sec 10 --move_threshold_px 15
 
 # yolo11n-pose.pt を使用し、リアルタイム表示を有効にして実行する例
-poetry run python scripts/detect_long_stay.py \
+poetry run python src/detect_long_stay_main.py \
     --input data/videos/WIN_20250319_10_03_53_Pro.mp4 \
     --output output/custom_output.mp4 \
     --model models/yolo11n-pose.pt \
@@ -44,13 +44,13 @@ poetry run python scripts/detect_long_stay.py \
 
 ```bash
 # 基本的な実行方法
-poetry run python scripts/run_head_pose.py --video data/videos/your_video.mp4
+poetry run python archive/scripts/landmarks/run_head_pose.py --video data/videos/your_video.mp4
 
 # 出力ファイルを指定
-poetry run python scripts/run_head_pose.py --video data/videos/your_video.mp4 --output data/output/output_head_pose.mp4
+poetry run python archive/scripts/landmarks/run_head_pose.py --video data/videos/your_video.mp4 --output data/output/output_head_pose.mp4
 
 # プレビューなしで実行
-poetry run python scripts/run_head_pose.py --video data/videos/your_video.mp4 --no-preview
+poetry run python archive/scripts/landmarks/run_head_pose.py --video data/videos/your_video.mp4 --no-preview
 ```
 
 ## プロジェクト構造の概要
