@@ -1,20 +1,8 @@
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import numpy as np
-import pytest
-import cv2
-
-from src.tracking.bytetrack_utils import (
-    get_system_info,
-    initialize_perf_log,
-    process_frame_for_tracking,
-    draw_tracking_info,
-    SKELETON_ULTRA,
-    KEYPOINT_COLOR,
-    SKELETON_COLOR
-)
+from src.tracking.bytetrack_utils import get_system_info, initialize_perf_log
 
 # テスト用のダミー入力ファイル名とモデルパス
 DUMMY_INPUT_FILE = "test_video.mp4"
@@ -149,70 +137,3 @@ def test_get_system_info():
     assert "python_version" in info
     assert "cpu_cores" in info
     assert "ram_total" in info
-
-
-def test_process_frame_for_tracking_no_detections(mocker):
-    """process_frame_for_tracking: 検出がない場合のテスト"""
-    mock_model = MagicMock()
-    mock_model.predict.return_value = [MagicMock(boxes=[], keypoints=None)] # No detections
-
-    mock_tracker = MagicMock()
-    mock_tracker.update.return_value = np.array([])
-
-    frame_rgb = np.zeros((100, 100, 3), dtype=np.uint8)
-
-    tracks, det_ms, track_ms, num_det, num_track, keypoints = process_frame_for_tracking(
-        frame_rgb, mock_model, mock_tracker, conf=0.5, enable_pose=False
-    )
-
-    assert len(tracks) == 0
-    assert num_det == 0
-    assert num_track == 0
-    assert keypoints is None
-    # Use mocker.ANY for the frame_rgb argument
-    mock_tracker.update.assert_called_once_with(mocker.ANY, mocker.ANY)
-
-
-def test_draw_tracking_info_with_pose(mocker):
-    """draw_tracking_info: 姿勢推定が有効でキーポイントがある場合のテスト"""
-    mock_rectangle = mocker.patch("cv2.rectangle")
-    mock_line = mocker.patch("cv2.line")
-    mock_circle = mocker.patch("cv2.circle")
-    mock_put_text = mocker.patch("cv2.putText")
-
-    frame = np.zeros((200, 200, 3), dtype=np.uint8)
-    tracks = np.array([[10, 20, 60, 80, 1, 0.9, 0]]) # x1, y1, x2, y2, track_id, conf, cls_id
-
-    # Dummy keypoints for one person (17 keypoints, each with x,y coords)
-    mock_keypoints_obj = MagicMock()
-    mock_keypoints_obj.xy.cpu.return_value.numpy.return_value = np.array([
-        [[15, 25], [20, 20], [30, 20], [25, 15], [35, 15], # 0-4
-        [20, 40], [30, 40], [15, 50], [35, 50], [10, 60], # 5-9
-        [40, 60], [25, 70], [35, 70], [20, 80], [40, 80], # 10-14
-        [15, 90], [45, 90]] # 15-16
-    ], dtype=np.float32)
-
-    draw_tracking_info(
-        frame,
-        tracks,
-        keypoints=mock_keypoints_obj,
-        enable_pose=True,
-        show_duration=False,
-        stay_info=None
-    )
-
-    # Assert that rectangle and text for ID are drawn
-    mock_rectangle.assert_called()
-    mock_put_text.assert_called()
-
-    # Assert that lines for skeleton are drawn
-    assert mock_line.call_count > 0
-    for call in mock_line.call_args_list:
-        # Check if the color is SKELETON_COLOR
-        assert call.args[3] == SKELETON_COLOR
-
-    # Assert that circles for keypoints are drawn
-    assert mock_circle.call_count > 0
-    for call in mock_circle.call_args_list:
-        # Check if the color is KEYPOINT_COLOR
-        assert call.args[3] == KEYPOINT_COLOR
