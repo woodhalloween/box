@@ -56,6 +56,10 @@ ENV/
 logs/
 *.log
 log_*.csv
+test_log.csv
+
+# Model files
+*.pt
 
 # === Poetry ===
 # Lockファイルは絶対に残す（＝チームの試合オーダー）
