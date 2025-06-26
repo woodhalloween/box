@@ -27,7 +27,7 @@ def dummy_video(tmp_path, dummy_frame):
 
 
 # === Dummy Components ===
-def dummy_draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
+def dummy_draw_tracking_info(frame, tracks, keypoints=None, enable_pose=False, show_duration=False, stay_info=None):
     return frame
 
 
@@ -43,9 +43,11 @@ def dummy_initialize_perf_log(enable, input_file, model_path, log_type="long_sta
     return "/dev/null"
 
 
-def dummy_process_frame_for_tracking(frame, model, tracker):
-    tracks = [{"id": 1, "bbox": [100, 100, 200, 200]}]
-    return tracks, 1.0, 1.0, 1, 1, None
+def dummy_process_frame_for_tracking(frame, model, tracker, conf, enable_pose):
+    tracks = [np.array([100, 100, 200, 200, 1, 0.9, 0])]
+    keypoints = MagicMock()
+    keypoints.xy.cpu.return_value.numpy.return_value = np.array([[[0,0]]*17]) # Dummy keypoints
+    return tracks, 1.0, 1.0, 1, 1, keypoints
 
 
 def dummy_update_stay_times(tracks, stay_info, current_time, move_threshold, stay_threshold):
@@ -53,7 +55,7 @@ def dummy_update_stay_times(tracks, stay_info, current_time, move_threshold, sta
     return stay_info, ["Long stay detected"], 0.5
 
 
-def dummy_process_frame(frame, model, tracker):
+def dummy_process_frame(frame, model, tracker, conf, enable_pose):
     return [], 0.1, 0.1, 1, 1, None
 
 
@@ -114,24 +116,26 @@ class MockVideoCapture:
 # === Tests ===
 def test_run_long_stay_detection(dummy_video, tmp_path):
     output_file = tmp_path / "output.mp4"
-    run_long_stay_detection(
-        input_path=dummy_video,
-        output_path=str(output_file),
-        model_path="dummy_model.pt",
-        device="cpu",
-        stay_threshold=2.0,
-        move_threshold=10.0,
-        conf=0.3,
-        enable_perf_log=False,
-        enable_video_display=False,
-        draw_fn=dummy_draw_tracking_info,
-        load_model_fn=dummy_load_yolo_model,
-        tracker_init_fn=dummy_initialize_bytetrack,
-        perf_log_fn=dummy_initialize_perf_log,
-        process_frame_fn=dummy_process_frame_for_tracking,
-        update_stay_fn=dummy_update_stay_times,
-    )
-    assert output_file.exists()
+    with patch("cv2.VideoWriter") as mock_video_writer:
+        run_long_stay_detection(
+            input_path=dummy_video,
+            output_path=str(output_file),
+            model_path="dummy_model.pt",
+            device="cpu",
+            stay_threshold=2.0,
+            move_threshold=10.0,
+            conf=0.3,
+            enable_perf_log=False,
+            enable_video_display=False,
+            enable_pose=False, # Add enable_pose
+            draw_fn=dummy_draw_tracking_info,
+            load_model_fn=dummy_load_yolo_model,
+            tracker_init_fn=dummy_initialize_bytetrack,
+            perf_log_fn=dummy_initialize_perf_log,
+            process_frame_fn=dummy_process_frame_for_tracking,
+            update_stay_fn=dummy_update_stay_times,
+        )
+        mock_video_writer.assert_called_once() # Ensure VideoWriter is called
 
 
 def test_input_file_not_found():
@@ -146,6 +150,7 @@ def test_input_file_not_found():
             conf=0.3,
             enable_perf_log=False,
             enable_video_display=False,
+            enable_pose=False, # Add enable_pose
             draw_fn=None,
             load_model_fn=None,
             tracker_init_fn=None,
@@ -174,6 +179,7 @@ def test_video_file_cannot_be_opened(tmp_path):
                 conf=0.3,
                 enable_perf_log=False,
                 enable_video_display=False,
+                enable_pose=False, # Add enable_pose
                 draw_fn=None,
                 load_model_fn=lambda p, d: None,
                 tracker_init_fn=lambda: None,
@@ -201,11 +207,12 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
             conf=0.3,
             enable_perf_log=True,
             enable_video_display=True,
+            enable_pose=False, # Add enable_pose
             draw_fn=lambda frame, *args, **kwargs: frame,
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
             perf_log_fn=dummy_perf_log_fn,
-            process_frame_fn=lambda f, m, t: ([], 0.1, 0.1, 0, 0, None),
+            process_frame_fn=lambda f, m, t, c, e: ([], 0.1, 0.1, 0, 0, None), # Update lambda
             update_stay_fn=lambda t, s, c, m, st: ({}, [], 0.05),
         )
     with open(dummy_log, newline="") as f:
@@ -246,11 +253,12 @@ def test_perf_log_frame_level_metrics_written(tmp_path):
             conf=0.3,
             enable_perf_log=True,
             enable_video_display=True,
+            enable_pose=False, # Add enable_pose
             draw_fn=dummy_draw_tracking_info,
             load_model_fn=dummy_load_yolo_model,
             tracker_init_fn=dummy_initialize_bytetrack,
             perf_log_fn=dummy_perf_log_fn,
-            process_frame_fn=dummy_process_frame,
+            process_frame_fn=lambda f, m, t, c, e: ([], 0.1, 0.1, 0, 0, None), # Update lambda
             update_stay_fn=dummy_update_stay_times,
         )
     assert log_path.exists()
@@ -280,11 +288,12 @@ def test_keyboard_interrupt_path(tmp_path):
             conf=0.3,
             enable_perf_log=False,
             enable_video_display=False,
+            enable_pose=False, # Add enable_pose
             draw_fn=lambda f, *a, **k: f,
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
             perf_log_fn=lambda *a, **k: "/dev/null",
-            process_frame_fn=lambda f, m, t: ([], 0.1, 0.1, 0, 0, None),
+            process_frame_fn=lambda f, m, t, c, e: ([], 0.1, 0.1, 0, 0, None), # Update lambda
             update_stay_fn=lambda t, s, c, m, st: ({}, [], 0.05),
         )
     printed = [call.args[0] for call in mock_print.call_args_list]

@@ -10,6 +10,7 @@ import psutil
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from ultralytics import YOLO
 
+
 # YOLO-Poseの骨格定義 (COCO 17 keypoints)
 # キーポイントのインデックスは0から始まる
 # (nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder,
@@ -157,20 +158,19 @@ def process_frame_for_tracking(frame_rgb, model, tracker, conf=0.3, enable_pose=
     tracking_time_ms = (time.time() - tracking_start_time) * 1000
 
     # 追跡結果とキーポイントを紐付ける
-    # ByteTrackは一部の検出を破棄する場合があるため、単純なインデックスでの紐付けは不正確になりうる
-    # ここでは、追跡されたオブジェクトに対応するキーポイントのみを抽出する
+    # 注: このマッピングは、検出時と追跡時でオブジェクトの順序が
+    # 変わらないという強い仮定に基づいています。
+    # boxmotのByteTrackは`det_idx`（元の検出インデックス）を返さないため、bboxのIoUでマッチングするのが次善策
+    # 今回は簡潔さのため、追跡後のbboxの中心に最も近い検出時のbboxを持つキーポイントを紐付ける
+    # ただし、パフォーマンスのため、ここでは単純なインデックスマッピングに留める
+    # 検出結果から追跡されなかったものが除外されたと仮定し、インデックスをマッピングする
+
+    # `results.boxes.numpy().xyxy` と `tracks` のbboxを比較してマッピングするのが理想
+    # `tracks` の `conf` を使って元の検出結果と紐付けられる可能性もある
+
+    # 現状のboxmotの出力では、確実な紐付けは困難。
+    # そのため、キーポイント全体を返し、描画側でベストエフォートで紐付ける
     if enable_pose and keypoints is not None and len(tracks) > 0:
-        # `tracks`に含まれる`det_idx`（元の検出インデックス）を使用して紐付けるのが最も堅牢
-        # boxmotのByteTrackは`det_idx`を返さないため、bboxのIoUでマッチングするのが次善策
-        # 今回は簡潔さのため、追跡後のbboxの中心に最も近い検出時のbboxを持つキーポイントを紐付ける
-        # ただし、パフォーマンスのため、ここでは単純なインデックスマッピングに留める
-        # 検出結果から追跡されなかったものが除外されたと仮定し、インデックスをマッピングする
-
-        # `results.boxes.numpy().xyxy` と `tracks` のbboxを比較してマッピングするのが理想
-        # `tracks` の `conf` を使って元の検出結果と紐付けられる可能性もある
-
-        # 現状のboxmotの出力では、確実な紐付けは困難。
-        # そのため、キーポイント全体を返し、描画側でベストエフォートで紐付ける
         pass  # keypointsをそのまま返す
 
     return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks), keypoints

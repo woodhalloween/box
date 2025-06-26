@@ -26,6 +26,9 @@ def parse_arguments():
     parser.add_argument("--stay_threshold_sec", type=float, default=5.0, help="長時間滞在と判定する閾値（秒）。")
     parser.add_argument("--move_threshold_px", type=float, default=30.0, help="移動と判定するピクセルの閾値。")
     parser.add_argument("--conf", type=float, default=0.3, help="YOLOの検出信頼度の閾値。")
+    parser.add_argument(
+        "--enable_pose", action="store_true", help="YOLO-Poseによる姿勢推定を有効にし、骨格を描画します。"
+    )
     return parser.parse_args()
 
 
@@ -43,6 +46,7 @@ def main():
         conf=args.conf,
         enable_perf_log=args.enable_perf_log,
         enable_video_display=args.enable_video_display,
+        enable_pose=args.enable_pose, # Pass enable_pose
         draw_fn=draw_tracking_info,
         load_model_fn=load_yolo_model,
         tracker_init_fn=initialize_bytetrack,

@@ -1,5 +1,6 @@
 # detect_long_stay_core.py
-# 🖥️ Daisy's core logic module for long-stay detection
+# 
+# Daisy's core logic module for long-stay detection
 
 import csv
 import os
@@ -26,6 +27,7 @@ def run_long_stay_detection(
     process_frame_fn,
     update_stay_fn,
     enable_video_display=True,  # critical
+    enable_pose=False, # Add enable_pose argument
 ):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input video file not found: {input_path}")
@@ -75,7 +77,10 @@ def run_long_stay_detection(
             current_time = time.time()
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-            tracks, det_ms, track_ms, num_det, num_track, _ = process_frame_fn(frame_rgb, model, tracker)
+            # Pass conf and enable_pose to process_frame_fn
+            tracks, det_ms, track_ms, num_det, num_track, keypoints = process_frame_fn(
+                frame_rgb, model, tracker, conf, enable_pose
+            )
 
             stay_info, notifications, stay_ms = update_stay_fn(
                 tracks, stay_info, current_time, move_threshold, stay_threshold
@@ -85,7 +90,8 @@ def run_long_stay_detection(
                 print(f"Frame {frame_idx}: {note}")
 
             if out or enable_video_display:
-                frame_bgr = draw_fn(frame_bgr, tracks, show_duration=True, stay_info=stay_info)
+                # Pass keypoints and enable_pose to draw_fn
+                frame_bgr = draw_fn(frame_bgr, tracks, keypoints=keypoints, enable_pose=enable_pose, show_duration=True, stay_info=stay_info)
                 current_fps = 1.0 / (time.time() - last_fps_update) if (time.time() - last_fps_update) > 0 else 0
                 fps_buffer.append(current_fps)
                 if len(fps_buffer) > 10:

@@ -16,8 +16,12 @@ def mock_yolo_result():
     mock_box.conf.cpu.return_value.numpy.return_value = np.array([0.85])
     mock_box.cls.cpu.return_value.numpy.return_value = np.array([0])
 
+    mock_keypoints = MagicMock()
+    mock_keypoints.xy.cpu.return_value.numpy.return_value = np.array([[[0,0]]*17]) # Dummy keypoints
+
     mock_result = MagicMock()
     mock_result.boxes = [mock_box]
+    mock_result.keypoints = mock_keypoints
 
     mock_results = MagicMock()
     mock_results.__getitem__.return_value = mock_result
@@ -40,8 +44,8 @@ class TestTracking:
         mock_tracker.update.return_value = [[10, 20, 50, 60, 1, 0.85, 0]]  # トラック結果
 
         # 関数実行
-        tracks, det_time, track_time, num_det, num_track, avg_conf = process_frame_for_tracking(
-            test_frame, mock_model, mock_tracker
+        tracks, det_time, track_time, num_det, num_track, keypoints = process_frame_for_tracking(
+            test_frame, mock_model, mock_tracker, conf=0.3, enable_pose=True
         )
 
         # 結果の検証
@@ -49,7 +53,7 @@ class TestTracking:
         assert track_time == pytest.approx(1.0)  # 0.001秒 = 1ms
         assert num_det == 1  # 検出数
         assert num_track == 1  # 追跡数
-        assert avg_conf == pytest.approx(0.85)  # 平均信頼度
+        assert keypoints is not None  # キーポイントが返されていることを確認
 
     @patch("time.time", side_effect=[0, 0.01, 0.02, 0.03])  # Simulated timings
     def test_process_frame_for_tracking_no_detections(self, mock_time):
@@ -60,6 +64,7 @@ class TestTracking:
         # Mock YOLO model with no detections
         mock_result = MagicMock()
         mock_result.boxes = []  # No boxes
+        mock_result.keypoints = None # No keypoints
 
         mock_results = MagicMock()
         mock_results.__getitem__.return_value = mock_result
@@ -71,8 +76,8 @@ class TestTracking:
         mock_tracker.update.return_value = []  # No tracks
 
         # Run function
-        tracks, det_time, track_time, num_det, num_track, avg_conf = process_frame_for_tracking(
-            test_frame, mock_model, mock_tracker
+        tracks, det_time, track_time, num_det, num_track, keypoints = process_frame_for_tracking(
+            test_frame, mock_model, mock_tracker, conf=0.3, enable_pose=True
         )
 
         # Assert correct behavior
@@ -80,7 +85,7 @@ class TestTracking:
         assert track_time == pytest.approx(10.0)
         assert num_det == 0
         assert num_track == 0
-        assert avg_conf == 0.0
+        assert keypoints is None
 
         # Check that tracker.update received an empty (0, 6) array
         dets_passed = mock_tracker.update.call_args[0][0]
