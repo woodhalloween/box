@@ -10,59 +10,6 @@ import psutil
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from ultralytics import YOLO
 
-# YOLO-Poseの骨格定義 (COCO 17 keypoints)
-# キーポイントのインデックスは0から始まる
-# (nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder,
-# left_elbow, right_elbow, left_wrist, right_wrist, left_hip, right_hip,
-# left_knee, right_knee, left_ankle, right_ankle)
-SKELETON = [
-    [16, 14],
-    [14, 12],
-    [17, 15],
-    [15, 13],
-    [12, 13],
-    [6, 12],
-    [7, 13],
-    [6, 7],
-    [6, 8],
-    [7, 9],
-    [8, 10],
-    [9, 11],
-    [2, 3],
-    [1, 2],
-    [1, 3],
-    [2, 4],
-    [3, 5],
-    [4, 6],
-    [5, 7],
-]
-# UltralyticsのPose keypoints
-# https://docs.ultralytics.com/tasks/pose/
-SKELETON_ULTRA = [
-    [15, 13],
-    [13, 11],
-    [16, 14],
-    [14, 12],
-    [11, 12],
-    [5, 11],
-    [6, 12],
-    [5, 6],
-    [5, 7],
-    [6, 8],
-    [7, 9],
-    [8, 10],
-    [1, 2],
-    [0, 1],
-    [0, 2],
-    [1, 3],
-    [2, 4],
-]
-
-
-# キーポイントと骨格の描画色
-KEYPOINT_COLOR = (0, 255, 0)  # Green for keypoints
-SKELETON_COLOR = (255, 0, 0)  # Blue for skeleton
-
 
 # データ保存用の構造体
 class DetectionResults:
@@ -125,29 +72,32 @@ def get_system_info():
     }
 
 
-def process_frame_for_tracking(frame_rgb, model, tracker, conf=0.3, enable_pose=False):
+def process_frame_for_tracking(frame_rgb, model, tracker):
     """1フレームを処理して検出と追跡を行う"""
     detection_start_time = time.time()
     # 人物クラス(0)のみを検出
-    results = model.predict(frame_rgb, verbose=False, classes=[0], conf=conf)
+    results = model.predict(frame_rgb, verbose=False, classes=[0])
     detection_time_ms = (time.time() - detection_start_time) * 1000
     result = results[0]
 
-    keypoints = result.keypoints if enable_pose else None
     boxes = result.boxes
     # 検出結果をboxmot用の形式に変換
     dets_for_tracker = []
+    avg_conf = 0.0
 
     if len(boxes) > 0:
+        total_conf = 0.0
         for i in range(len(boxes)):
             box = boxes[i].xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
             conf = float(boxes[i].conf.cpu().numpy()[0])
             cls = int(boxes[i].cls.cpu().numpy()[0])
+            total_conf += conf
 
             # [x1, y1, x2, y2, conf, class]の形式
-            dets_for_tracker.append([*box, conf, cls])
+            dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
 
         dets_for_tracker = np.array(dets_for_tracker)
+        avg_conf = total_conf / len(boxes) if len(boxes) > 0 else 0
     else:
         dets_for_tracker = np.empty((0, 6))
 
@@ -156,24 +106,7 @@ def process_frame_for_tracking(frame_rgb, model, tracker, conf=0.3, enable_pose=
     tracks = tracker.update(dets_for_tracker, frame_rgb)
     tracking_time_ms = (time.time() - tracking_start_time) * 1000
 
-    # 追跡結果とキーポイントを紐付ける
-    # ByteTrackは一部の検出を破棄する場合があるため、単純なインデックスでの紐付けは不正確になりうる
-    # ここでは、追跡されたオブジェクトに対応するキーポイントのみを抽出する
-    if enable_pose and keypoints is not None and len(tracks) > 0:
-        # `tracks`に含まれる`det_idx`（元の検出インデックス）を使用して紐付けるのが最も堅牢
-        # boxmotのByteTrackは`det_idx`を返さないため、bboxのIoUでマッチングするのが次善策
-        # 今回は簡潔さのため、追跡後のbboxの中心に最も近い検出時のbboxを持つキーポイントを紐付ける
-        # ただし、パフォーマンスのため、ここでは単純なインデックスマッピングに留める
-        # 検出結果から追跡されなかったものが除外されたと仮定し、インデックスをマッピングする
-
-        # `results.boxes.numpy().xyxy` と `tracks` のbboxを比較してマッピングするのが理想
-        # `tracks` の `conf` を使って元の検出結果と紐付けられる可能性もある
-
-        # 現状のboxmotの出力では、確実な紐付けは困難。
-        # そのため、キーポイント全体を返し、描画側でベストエフォートで紐付ける
-        pass  # keypointsをそのまま返す
-
-    return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks), keypoints
+    return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks), avg_conf
 
 
 def resize_frame(frame, target_width, target_height):
@@ -181,30 +114,15 @@ def resize_frame(frame, target_width, target_height):
     return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
 
-def draw_tracking_info(frame, tracks, keypoints=None, enable_pose=False, show_duration=False, stay_info=None):
-    """トラッキング情報と骨格を描画
+def draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
+    """トラッキング情報を描画
 
     Args:
         frame: フレーム画像（BGRフォーマット）
         tracks: 追跡情報 [x1, y1, x2, y2, track_id, ...]
-        keypoints: YOLOのキーポイント結果
-        enable_pose: 姿勢描画を有効にするか
         show_duration: 滞在時間を表示するかどうか (default: False)
         stay_info: 滞在情報の辞書 (show_durationがTrueの場合必要)
     """
-    # 追跡IDとキーポイントのマッピングを作成
-    # 注: このマッピングは、検出時と追跡時でオブジェクトの順序が
-    # 変わらないという強い仮定に基づいています。
-    keypoints_by_track_id = {}
-    if enable_pose and keypoints is not None and len(tracks) > 0:
-        kpts_data = keypoints.xy.cpu().numpy()  # (N, 17, 2)
-        # 検出されたキーポイントの数と追跡されたトラックの数が異なる場合がある
-        num_kpts = kpts_data.shape[0]
-        for i, track in enumerate(tracks):
-            if i < num_kpts:
-                track_id = int(track[4])
-                keypoints_by_track_id[track_id] = kpts_data[i]
-
     for track in tracks:
         # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
         x1, y1, x2, y2, track_id = track[:5]
@@ -227,25 +145,6 @@ def draw_tracking_info(frame, tracks, keypoints=None, enable_pose=False, show_du
         else:
             label = f"ID: {track_id}"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        # 骨格とキーポイントの描画
-        if enable_pose and track_id in keypoints_by_track_id:
-            kpts = keypoints_by_track_id[track_id]  # (17, 2)
-
-            # スケルトンを描画
-            for sk in SKELETON_ULTRA:
-                p1_idx, p2_idx = sk
-                # キーポイントの座標が(0, 0)でない場合のみ描画
-                if np.all(kpts[p1_idx] > 0) and np.all(kpts[p2_idx] > 0):
-                    p1 = tuple(map(int, kpts[p1_idx]))
-                    p2 = tuple(map(int, kpts[p2_idx]))
-                    cv2.line(frame, p1, p2, SKELETON_COLOR, 2)
-
-            # キーポイントを描画
-            for i in range(kpts.shape[0]):
-                if np.all(kpts[i] > 0):
-                    p = tuple(map(int, kpts[i]))
-                    cv2.circle(frame, p, 3, KEYPOINT_COLOR, -1)
 
     return frame
 

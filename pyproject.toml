@@ -98,6 +98,3 @@ format = "bash -c 'ruff format src scripts bytetracks tests'"
 # インポートの整理に関する設定
 [tool.ruff.lint.isort]
 known-first-party = ["scripts", "src"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/scripts/test_detect_long_stay.py" = ["E402"]

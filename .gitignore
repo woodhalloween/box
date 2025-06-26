@@ -70,6 +70,3 @@ log_*.csv
 htmlcov/
 coverage.xml
 tests/**/.coverage
-
-# CSV files
-*.csv
