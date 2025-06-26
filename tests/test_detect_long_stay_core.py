@@ -138,6 +138,39 @@ def test_run_long_stay_detection(dummy_video, tmp_path):
         mock_video_writer.assert_called_once() # Ensure VideoWriter is called
 
 
+def test_run_long_stay_detection_video_writer_fallback(dummy_video, tmp_path):
+    output_file = tmp_path / "output_fallback.mp4"
+    mock_writer_instance_fail = MagicMock()
+    mock_writer_instance_fail.isOpened.return_value = False
+
+    mock_writer_instance_success = MagicMock()
+    mock_writer_instance_success.isOpened.return_value = True
+
+    with patch("cv2.VideoWriter", side_effect=[mock_writer_instance_fail, mock_writer_instance_success]) as mock_video_writer_class:
+        run_long_stay_detection(
+            input_path=dummy_video,
+            output_path=str(output_file),
+            model_path="dummy_model.pt",
+            device="cpu",
+            stay_threshold=2.0,
+            move_threshold=10.0,
+            conf=0.3,
+            enable_perf_log=False,
+            enable_video_display=False,
+            enable_pose=False,
+            draw_fn=dummy_draw_tracking_info,
+            load_model_fn=dummy_load_yolo_model,
+            tracker_init_fn=dummy_initialize_bytetrack,
+            perf_log_fn=dummy_initialize_perf_log,
+            process_frame_fn=dummy_process_frame_for_tracking,
+            update_stay_fn=dummy_update_stay_times,
+        )
+        # Assert that VideoWriter was called twice (once for avc1, once for mp4v)
+        assert mock_video_writer_class.call_count == 2
+        # Assert that the second call used 'mp4v'
+        assert mock_video_writer_class.call_args_list[1].args[1] == cv2.VideoWriter_fourcc(*"mp4v")
+
+
 def test_input_file_not_found():
     with pytest.raises(FileNotFoundError) as excinfo:
         run_long_stay_detection(
@@ -208,7 +241,7 @@ def test_perf_log_video_metadata_written(tmp_path, dummy_video):
             enable_perf_log=True,
             enable_video_display=True,
             enable_pose=False, # Add enable_pose
-            draw_fn=lambda frame, *args, **kwargs: frame,
+            draw_fn=lambda frame, tracks, keypoints, enable_pose, show_duration, stay_info: frame, # Update lambda
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
             perf_log_fn=dummy_perf_log_fn,
@@ -289,7 +322,7 @@ def test_keyboard_interrupt_path(tmp_path):
             enable_perf_log=False,
             enable_video_display=False,
             enable_pose=False, # Add enable_pose
-            draw_fn=lambda f, *a, **k: f,
+            draw_fn=lambda f, tracks, keypoints, enable_pose, show_duration, stay_info: f, # Update lambda
             load_model_fn=lambda p, d: "model",
             tracker_init_fn=lambda: "tracker",
             perf_log_fn=lambda *a, **k: "/dev/null",

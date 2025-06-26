@@ -1,7 +1,6 @@
 # test_detect_long_stay_main.py
-import pytest
-from unittest.mock import patch, MagicMock
-import os
+from unittest.mock import MagicMock
+
 import cv2
 import numpy as np
 
@@ -21,7 +20,8 @@ def test_main_function_execution(mocker):
         device='cpu',
         stay_threshold_sec=5.0,
         move_threshold_px=30.0,
-        conf=0.3
+        conf=0.3,
+        enable_pose=False # Add enable_pose
     )
 
     # Mock Path.mkdir to prevent actual directory creation

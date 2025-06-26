@@ -10,7 +10,6 @@ import psutil
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from ultralytics import YOLO
 
-
 # YOLO-Poseの骨格定義 (COCO 17 keypoints)
 # キーポイントのインデックスは0から始まる
 # (nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder,
