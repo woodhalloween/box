@@ -17,7 +17,7 @@ def mock_yolo_result():
     mock_box.cls.cpu.return_value.numpy.return_value = np.array([0])
 
     mock_keypoints = MagicMock()
-    mock_keypoints.xy.cpu.return_value.numpy.return_value = np.array([[[0,0]]*17]) # Dummy keypoints
+    mock_keypoints.xy.cpu.return_value.numpy.return_value = np.array([[[0, 0]] * 17])  # Dummy keypoints
 
     mock_result = MagicMock()
     mock_result.boxes = [mock_box]
@@ -64,7 +64,7 @@ class TestTracking:
         # Mock YOLO model with no detections
         mock_result = MagicMock()
         mock_result.boxes = []  # No boxes
-        mock_result.keypoints = None # No keypoints
+        mock_result.keypoints = None  # No keypoints
 
         mock_results = MagicMock()
         mock_results.__getitem__.return_value = mock_result

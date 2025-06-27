@@ -1,5 +1,5 @@
 # detect_long_stay_core.py
-# 
+#
 # Daisy's core logic module for long-stay detection
 
 import csv
@@ -27,7 +27,7 @@ def run_long_stay_detection(
     process_frame_fn,
     update_stay_fn,
     enable_video_display=True,  # critical
-    enable_pose=False, # Add enable_pose argument
+    enable_pose=False,  # Add enable_pose argument
 ):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input video file not found: {input_path}")
@@ -91,7 +91,14 @@ def run_long_stay_detection(
 
             if out or enable_video_display:
                 # Pass keypoints and enable_pose to draw_fn
-                frame_bgr = draw_fn(frame_bgr, tracks, keypoints=keypoints, enable_pose=enable_pose, show_duration=True, stay_info=stay_info)
+                frame_bgr = draw_fn(
+                    frame_bgr,
+                    tracks,
+                    keypoints=keypoints,
+                    enable_pose=enable_pose,
+                    show_duration=True,
+                    stay_info=stay_info,
+                )
                 current_fps = 1.0 / (time.time() - last_fps_update) if (time.time() - last_fps_update) > 0 else 0
                 fps_buffer.append(current_fps)
                 if len(fps_buffer) > 10:

@@ -46,7 +46,7 @@ def main():
         conf=args.conf,
         enable_perf_log=args.enable_perf_log,
         enable_video_display=args.enable_video_display,
-        enable_pose=args.enable_pose, # Pass enable_pose
+        enable_pose=args.enable_pose,  # Pass enable_pose
         draw_fn=draw_tracking_info,
         load_model_fn=load_yolo_model,
         tracker_init_fn=initialize_bytetrack,
