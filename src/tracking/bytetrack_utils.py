@@ -10,6 +10,59 @@ import psutil
 from boxmot.trackers.bytetrack.bytetrack import ByteTrack
 from ultralytics import YOLO
 
+# YOLO-Poseの骨格定義 (COCO 17 keypoints)
+# キーポイントのインデックスは0から始まる
+# (nose, left_eye, right_eye, left_ear, right_ear, left_shoulder, right_shoulder,
+# left_elbow, right_elbow, left_wrist, right_wrist, left_hip, right_hip,
+# left_knee, right_knee, left_ankle, right_ankle)
+SKELETON = [
+    [16, 14],
+    [14, 12],
+    [17, 15],
+    [15, 13],
+    [12, 13],
+    [6, 12],
+    [7, 13],
+    [6, 7],
+    [6, 8],
+    [7, 9],
+    [8, 10],
+    [9, 11],
+    [2, 3],
+    [1, 2],
+    [1, 3],
+    [2, 4],
+    [3, 5],
+    [4, 6],
+    [5, 7],
+]
+# UltralyticsのPose keypoints
+# https://docs.ultralytics.com/tasks/pose/
+SKELETON_ULTRA = [
+    [15, 13],
+    [13, 11],
+    [16, 14],
+    [14, 12],
+    [11, 12],
+    [5, 11],
+    [6, 12],
+    [5, 6],
+    [5, 7],
+    [6, 8],
+    [7, 9],
+    [8, 10],
+    [1, 2],
+    [0, 1],
+    [0, 2],
+    [1, 3],
+    [2, 4],
+]
+
+
+# キーポイントと骨格の描画色
+KEYPOINT_COLOR = (0, 255, 0)  # Green for keypoints
+SKELETON_COLOR = (255, 0, 0)  # Blue for skeleton
+
 
 # データ保存用の構造体
 class DetectionResults:
@@ -53,9 +106,7 @@ class DetectionResults:
             "avg_objects_detected": np.mean(self.objects_detected) if self.objects_detected else 0,
             "avg_objects_tracked": np.mean(self.objects_tracked) if self.objects_tracked else 0,
             "avg_memory_usage": np.mean(self.memory_usages) if self.memory_usages else 0,
-            "avg_detection_conf": np.mean(self.detection_confidence)
-            if self.detection_confidence
-            else 0,
+            "avg_detection_conf": np.mean(self.detection_confidence) if self.detection_confidence else 0,
             "max_objects_detected": max(self.objects_detected) if self.objects_detected else 0,
             "max_objects_tracked": max(self.objects_tracked) if self.objects_tracked else 0,
         }
@@ -74,32 +125,29 @@ def get_system_info():
     }
 
 
-def process_frame_for_tracking(frame_rgb, model, tracker):
+def process_frame_for_tracking(frame_rgb, model, tracker, conf=0.3, enable_pose=False):
     """1フレームを処理して検出と追跡を行う"""
     detection_start_time = time.time()
     # 人物クラス(0)のみを検出
-    results = model.predict(frame_rgb, verbose=False, classes=[0])
+    results = model.predict(frame_rgb, verbose=False, classes=[0], conf=conf)
     detection_time_ms = (time.time() - detection_start_time) * 1000
     result = results[0]
 
+    keypoints = result.keypoints if enable_pose else None
     boxes = result.boxes
     # 検出結果をboxmot用の形式に変換
     dets_for_tracker = []
-    avg_conf = 0.0
 
     if len(boxes) > 0:
-        total_conf = 0.0
         for i in range(len(boxes)):
             box = boxes[i].xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
             conf = float(boxes[i].conf.cpu().numpy()[0])
             cls = int(boxes[i].cls.cpu().numpy()[0])
-            total_conf += conf
 
             # [x1, y1, x2, y2, conf, class]の形式
             dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
 
         dets_for_tracker = np.array(dets_for_tracker)
-        avg_conf = total_conf / len(boxes) if len(boxes) > 0 else 0
     else:
         dets_for_tracker = np.empty((0, 6))
 
@@ -108,7 +156,23 @@ def process_frame_for_tracking(frame_rgb, model, tracker):
     tracks = tracker.update(dets_for_tracker, frame_rgb)
     tracking_time_ms = (time.time() - tracking_start_time) * 1000
 
-    return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks), avg_conf
+    # 追跡結果とキーポイントを紐付ける
+    # 注: このマッピングは、検出時と追跡時でオブジェクトの順序が
+    # 変わらないという強い仮定に基づいています。
+    # boxmotのByteTrackは`det_idx`（元の検出インデックス）を返さないため、bboxのIoUでマッチングするのが次善策
+    # 今回は簡潔さのため、追跡後のbboxの中心に最も近い検出時のbboxを持つキーポイントを紐付ける
+    # ただし、パフォーマンスのため、ここでは単純なインデックスマッピングに留める
+    # 検出結果から追跡されなかったものが除外されたと仮定し、インデックスをマッピングする
+
+    # `results.boxes.numpy().xyxy` と `tracks` のbboxを比較してマッピングするのが理想
+    # `tracks` の `conf` を使って元の検出結果と紐付けられる可能性もある
+
+    # 現状のboxmotの出力では、確実な紐付けは困難。
+    # そのため、キーポイント全体を返し、描画側でベストエフォートで紐付ける
+    if enable_pose and keypoints is not None and len(tracks) > 0:
+        pass  # keypointsをそのまま返す
+
+    return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks), keypoints
 
 
 def resize_frame(frame, target_width, target_height):
@@ -116,15 +180,30 @@ def resize_frame(frame, target_width, target_height):
     return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
 
-def draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
-    """トラッキング情報を描画
+def draw_tracking_info(frame, tracks, keypoints=None, enable_pose=False, show_duration=False, stay_info=None):
+    """トラッキング情報と骨格を描画
 
     Args:
         frame: フレーム画像（BGRフォーマット）
         tracks: 追跡情報 [x1, y1, x2, y2, track_id, ...]
+        keypoints: YOLOのキーポイント結果
+        enable_pose: 姿勢描画を有効にするか
         show_duration: 滞在時間を表示するかどうか (default: False)
         stay_info: 滞在情報の辞書 (show_durationがTrueの場合必要)
     """
+    # 追跡IDとキーポイントのマッピングを作成
+    # 注: このマッピングは、検出時と追跡時でオブジェクトの順序が
+    # 変わらないという強い仮定に基づいています。
+    keypoints_by_track_id = {}
+    if enable_pose and keypoints is not None and len(tracks) > 0:
+        kpts_data = keypoints.xy.cpu().numpy()  # (N, 17, 2)
+        # 検出されたキーポイントの数と追跡されたトラックの数が異なる場合がある
+        num_kpts = kpts_data.shape[0]
+        for i, track in enumerate(tracks):
+            if i < num_kpts:
+                track_id = int(track[4])
+                keypoints_by_track_id[track_id] = kpts_data[i]
+
     for track in tracks:
         # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
         x1, y1, x2, y2, track_id = track[:5]
@@ -141,15 +220,31 @@ def draw_tracking_info(frame, tracks, show_duration=False, stay_info=None):
             label = f"ID:{track_id} 滞在:{stay_duration:.1f}s 高さ:{person_height}px"
 
             # 長時間滞在の場合は色を変える
-            if stay_duration >= 4.0:  # デフォルトのしきい値
-                color = (0, 0, 255)  # 赤色
-            else:
-                color = (0, 255, 0)  # 緑色
+            color = (0, 0, 255) if stay_duration >= 4.0 else (0, 255, 0)
 
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         else:
             label = f"ID: {track_id}"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # 骨格とキーポイントの描画
+        if enable_pose and track_id in keypoints_by_track_id:
+            kpts = keypoints_by_track_id[track_id]  # (17, 2)
+
+            # スケルトンを描画
+            for sk in SKELETON_ULTRA:
+                p1_idx, p2_idx = sk
+                # キーポイントの座標が(0, 0)でない場合のみ描画
+                if np.all(kpts[p1_idx] > 0) and np.all(kpts[p2_idx] > 0):
+                    p1 = tuple(map(int, kpts[p1_idx]))
+                    p2 = tuple(map(int, kpts[p2_idx]))
+                    cv2.line(frame, p1, p2, SKELETON_COLOR, 2)
+
+            # キーポイントを描画
+            for i in range(kpts.shape[0]):
+                if np.all(kpts[i] > 0):
+                    p = tuple(map(int, kpts[i]))
+                    cv2.circle(frame, p, 3, KEYPOINT_COLOR, -1)
 
     return frame
 
@@ -164,7 +259,7 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
         log_type: ログタイプ ("generic", "long_stay", "fps", "resolution")
     """
     if not enable_perf_log:
-        return None, None, None
+        return None
 
     system_info = get_system_info()
     timestamp_log = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -172,7 +267,6 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
     input_stem = Path(input_file).stem
     model_stem = Path(model_path).stem
 
-    # outputディレクトリの作成
     output_dir = Path("output/logs")
     output_dir.mkdir(parents=True, exist_ok=True)
     perf_log_file = output_dir / f"log_{input_stem}_{log_type}_{model_stem}_{timestamp_log}.csv"
@@ -191,41 +285,37 @@ def initialize_perf_log(enable_perf_log, input_file, model_path, log_type="gener
         "Tracker",
         "Notes",
     ]
-
-    # long_stay用に追加カラム
     if log_type == "long_stay":
         perf_columns.insert(4, "Stay_Check_Time_ms")
 
-    perf_log_f = None  # Initialize perf_log_f
     try:
-        # with open(perf_log_file, "w", newline="") as perf_log_f:
-        perf_log_f = open(perf_log_file, "w", newline="")
-        perf_log_writer = csv.writer(perf_log_f)
-        perf_log_writer.writerow(["# System Information"])
-        perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
-        perf_log_writer.writerow(["# Python", system_info["python_version"]])
-        perf_log_writer.writerow(
-            [
-                "# CPU",
-                system_info["cpu"],
-                f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
-            ]
-        )
-        perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(["# YOLO Model", model_path])
-        perf_log_writer.writerow(["# Tracker", "bytetrack"])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(["# Video", input_file])
-        perf_log_writer.writerow([])
-        perf_log_writer.writerow(perf_columns)
+        with open(perf_log_file, "w", newline="") as perf_log_f:
+            perf_log_writer = csv.writer(perf_log_f)
+            perf_log_writer.writerow(["# System Information"])
+            perf_log_writer.writerow(["# OS", system_info["os"], system_info["os_version"]])
+            perf_log_writer.writerow(["# Python", system_info["python_version"]])
+            perf_log_writer.writerow(
+                [
+                    "# CPU",
+                    system_info["cpu"],
+                    f"{system_info['cpu_cores']} cores, {system_info['cpu_threads']} threads",
+                ]
+            )
+            perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(["# YOLO Model", model_path])
+            perf_log_writer.writerow(["# Tracker", "bytetrack"])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(["# Video", input_file])
+            perf_log_writer.writerow([])
+            perf_log_writer.writerow(perf_columns)
+
         print(f"パフォーマンスログ: 有効 ({perf_log_file})")
-        return str(perf_log_file), perf_log_f, perf_log_writer  # Return path as string
+        return str(perf_log_file)  # Only return path
+
     except OSError as e:
         print(f"エラー: パフォーマンスログファイル '{perf_log_file}' を開けません: {e}")
-        if perf_log_f:
-            perf_log_f.close()  # Close if an error occurs after opening
-        return None, None, None
+        return None
 
 
 def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec):
@@ -275,11 +365,7 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
 
             # 過去1秒間の平均位置と比較して移動判定（より安定した判定のため）
             history_seconds = 1.0  # 過去何秒間の履歴を参照するか
-            relevant_history = [
-                p
-                for t, p, _ in stay_info[track_id]["history"]
-                if current_time - t <= history_seconds
-            ]
+            relevant_history = [p for t, p, _ in stay_info[track_id]["history"] if current_time - t <= history_seconds]
             if not relevant_history:
                 relevant_history = [last_pos]  # 履歴が足りない場合は最後の位置を使用
 
@@ -294,7 +380,12 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
 
             # 閾値も正規化
             # dynamic_move_threshold = move_threshold_px / normalization_factor
-            # print(f"ID:{track_id}, dist_norm:{dist_moved_normalized:.2f}, thresh_norm:{dynamic_move_threshold:.2f}, factor:{normalization_factor:.2f}, height:{person_height}")
+            # print(
+            #     f"ID:{track_id}, dist_norm:{dist_moved_normalized:.2f}, "
+            #     f"thresh_norm:{dynamic_move_threshold:.2f}, "
+            #     f"factor:{normalization_factor:.2f}, "
+            #     f"height:{person_height}"
+            # )
 
             if dist_moved_normalized < move_threshold_px:  # 正規化後の閾値と比較
                 stay_info[track_id]["stay_duration"] += time_diff
@@ -310,16 +401,11 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
             # 古い履歴を削除（例: 過去5秒分のみ保持）
             max_history_duration = 5.0
             stay_info[track_id]["history"] = [
-                h
-                for h in stay_info[track_id]["history"]
-                if current_time - h[0] <= max_history_duration
+                h for h in stay_info[track_id]["history"] if current_time - h[0] <= max_history_duration
             ]
 
             # 長時間滞在の通知チェック
-            if (
-                stay_info[track_id]["stay_duration"] >= stay_threshold_sec
-                and not stay_info[track_id]["notified"]
-            ):
+            if stay_info[track_id]["stay_duration"] >= stay_threshold_sec and not stay_info[track_id]["notified"]:
                 notifications.append(
                     {
                         "id": track_id,

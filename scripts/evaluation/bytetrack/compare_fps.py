@@ -80,9 +80,7 @@ def create_lower_fps_video(input_file, output_file, target_fps=10):
 
     # 元のFPSが既に10以下の場合はそのままコピー
     if orig_fps <= target_fps:
-        print(
-            f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。"
-        )
+        print(f"警告: 元の動画のFPS({orig_fps})が既に目標FPS({target_fps})以下です。そのままコピーします。")
         cap.release()
         import shutil
 
@@ -159,7 +157,6 @@ def process_video(
     results = DetectionResults()
     frame_idx = 0
     start_time = time.time()
-    last_fps_update = start_time
     fps_buffer = []
 
     try:
@@ -225,7 +222,7 @@ def process_video(
 
             # 進捗表示
             if frame_idx % 30 == 0:
-                elapsed = time.time() - start_time
+                # elapsed = time.time() - start_time
                 progress = frame_idx / frame_count * 100 if frame_count > 0 else 0
                 print(
                     f"進捗: {frame_idx}/{frame_count} ({progress:.1f}%) "
@@ -248,9 +245,7 @@ def process_video(
     return results
 
 
-def compare_fps(
-    input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device="", target_fps=10
-):
+def compare_fps(input_file, output_dir, model_path="yolov11n.pt", enable_preview=False, device="", target_fps=10):
     """異なるFPSでの性能を比較する"""
     print(f"モデル: {model_path}")
 
@@ -271,9 +266,7 @@ def compare_fps(
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    print(
-        f"元の入力動画: {original_width}x{original_height}, {original_fps:.2f}fps, {frame_count}フレーム"
-    )
+    print(f"元の入力動画: {original_width}x{original_height}, {original_fps:.2f}fps, {frame_count}フレーム")
 
     # 出力ディレクトリの作成
     os.makedirs(output_dir, exist_ok=True)
@@ -299,9 +292,7 @@ def compare_fps(
         if abs(current_proc_fps - original_fps) > 0.1:  # わずかな違いは無視
             temp_video_file = os.path.join(output_dir, f"temp_video_{current_proc_fps:.0f}fps.mp4")
             if not create_lower_fps_video(input_file, temp_video_file, target_fps=current_proc_fps):
-                print(
-                    f"エラー: {current_proc_fps}fpsの動画作成に失敗しました。このFPSでの処理をスキップします。"
-                )
+                print(f"エラー: {current_proc_fps}fpsの動画作成に失敗しました。このFPSでの処理をスキップします。")
                 continue
             video_to_process = temp_video_file
 
@@ -310,9 +301,7 @@ def compare_fps(
         print(f"ByteTrack initialized with frame_rate: {current_proc_fps}")
 
         # 出力ファイル名の設定 (処理済み動画)
-        output_video_file = os.path.join(
-            output_dir, f"output_{Path(video_to_process).stem}_processed.mp4"
-        )
+        output_video_file = os.path.join(output_dir, f"output_{Path(video_to_process).stem}_processed.mp4")
 
         fps_results = process_video(
             video_to_process,
@@ -368,9 +357,7 @@ def compare_fps(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="異なるFPSでのYOLOv11とByteTrackの性能を比較します。"
-    )
+    parser = argparse.ArgumentParser(description="異なるFPSでのYOLOv11とByteTrackの性能を比較します。")
     parser.add_argument("--input", type=str, required=True, help="入力動画ファイルのパス")
     parser.add_argument(
         "--output_dir",
@@ -379,9 +366,7 @@ def main():
         help="出力ディレクトリのパス",
     )
     parser.add_argument("--model", type=str, default="yolov11n.pt", help="YOLOモデルファイルのパス")
-    parser.add_argument(
-        "--target_fps", type=int, default=10, help="比較対象とする低FPSの値 (例: 10)"
-    )
+    parser.add_argument("--target_fps", type=int, default=10, help="比較対象とする低FPSの値 (例: 10)")
     parser.add_argument("--preview", action="store_true", help="処理中のプレビューを表示する")
     parser.add_argument(
         "--device",

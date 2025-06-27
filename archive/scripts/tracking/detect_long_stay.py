@@ -7,9 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
-import numpy as np
 import psutil
-from boxmot.trackers.bytetrack.bytetrack import ByteTrack
+from deep_sort_realtime.deepsort_tracker import DeepSort
 from ultralytics import YOLO
 
 # Skeleton structure for YOLO keypoints visualization
@@ -69,7 +68,6 @@ def initialize_perf_log(enable_perf_log: bool, input_file: str, model_path: str)
         "Objects_Detected",
         "Objects_Tracked",
         "FPS",
-        "Memory_MB",
         "Model",
         "Tracker",
         "Notes",
@@ -91,7 +89,7 @@ def initialize_perf_log(enable_perf_log: bool, input_file: str, model_path: str)
             perf_log_writer.writerow(["# RAM", f"{system_info['ram_total']} GB"])
             perf_log_writer.writerow([])
             perf_log_writer.writerow(["# YOLO Model", model_path])  # Simplified model info
-            perf_log_writer.writerow(["# Tracker", "bytetrack"])
+            perf_log_writer.writerow(["# Tracker", "deepsort"])
             perf_log_writer.writerow([])
             perf_log_writer.writerow(["# Video", input_file])
             # Video properties (width, height, fps) will be added later in main
@@ -111,29 +109,28 @@ def process_frame_for_tracking(frame_rgb, model, tracker):
     detection_time_ms = (time.time() - detection_start_time) * 1000
     result = results[0]
 
-    boxes = result.boxes
-    # 検出結果をboxmot用の形式に変換
-    dets_for_tracker = []
+    detections = result.boxes.xyxy.cpu().numpy()
+    confidences = result.boxes.conf.cpu().numpy()
+    class_ids = result.boxes.cls.cpu().numpy()
 
-    if len(boxes) > 0:
-        for i in range(len(boxes)):
-            box = boxes[i].xyxy.cpu().numpy()[0]  # [x1, y1, x2, y2]
-            conf = float(boxes[i].conf.cpu().numpy()[0])
-            cls = int(boxes[i].cls.cpu().numpy()[0])
-
-            # [x1, y1, x2, y2, conf, class]の形式
-            dets_for_tracker.append([box[0], box[1], box[2], box[3], conf, cls])
-
-        dets_for_tracker = np.array(dets_for_tracker)
-    else:
-        dets_for_tracker = np.empty((0, 6))
+    formatted_detections = [
+        ([x1, y1, x2 - x1, y2 - y1], float(conf), int(cls))
+        for (x1, y1, x2, y2), conf, cls in zip(detections, confidences, class_ids, strict=False)
+    ]
 
     tracking_start_time = time.time()
-    # ByteTrackのupdateメソッドにnumpy配列を渡す - 結果もnumpy配列
-    tracks = tracker.update(dets_for_tracker, frame_rgb)
+    tracks = tracker.update_tracks(formatted_detections, frame=frame_rgb)
     tracking_time_ms = (time.time() - tracking_start_time) * 1000
 
-    return tracks, detection_time_ms, tracking_time_ms, len(boxes), len(tracks)
+    confirmed_tracks = [t for t in tracks if t.is_confirmed()]
+
+    return (
+        confirmed_tracks,
+        detection_time_ms,
+        tracking_time_ms,
+        len(detections),
+        len(confirmed_tracks),
+    )
 
 
 def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_threshold_sec):
@@ -143,24 +140,12 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
     notifications = []
 
     for track in tracks:
-        # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
-        x1, y1, x2, y2, track_id = track[:5]
-        x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-        track_id = int(track_id)
-
+        track_id = track.track_id
         current_track_ids.add(track_id)
+        x1, y1, x2, y2 = map(int, track.to_ltrb())
         center_x = (x1 + x2) / 2
         center_y = (y1 + y2) / 2
         current_pos = (center_x, center_y)
-
-        # 人物の高さを計算（遠近感の基準として使用）
-        person_height = y2 - y1
-
-        # 基準高さの設定（画面の半分の高さを基準と仮定）
-        reference_height = 200  # この値は環境によって調整可能
-
-        # 正規化係数の計算（小さい人物ほど係数が大きくなる）
-        normalization_factor = reference_height / max(person_height, 1)  # ゼロ除算防止
 
         if track_id not in stay_info:
             # New track detected
@@ -169,53 +154,31 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
                 "last_time": current_time,
                 "stay_duration": 0.0,
                 "notified": False,
-                "person_height": person_height,  # 人物の高さを記録
-                "last_normalization_factor": normalization_factor,  # 正規化係数を記録
             }
         else:
             # Existing track update
             last_pos = stay_info[track_id]["last_pos"]
             last_time = stay_info[track_id]["last_time"]
-
-            # 記録されている正規化係数と現在の正規化係数の平均を使用
-            last_normalization_factor = stay_info[track_id]["last_normalization_factor"]
-            avg_normalization_factor = (last_normalization_factor + normalization_factor) / 2
-
-            # ピクセル単位の距離を計算
-            pixel_distance = ((current_pos[0] - last_pos[0]) ** 2 + (current_pos[1] - last_pos[1]) ** 2) ** 0.5
-
-            # 人物の大きさで正規化した距離を計算
-            normalized_distance = pixel_distance * avg_normalization_factor
-
+            distance = ((current_pos[0] - last_pos[0]) ** 2 + (current_pos[1] - last_pos[1]) ** 2) ** 0.5
             time_diff = current_time - last_time
 
-            # ログ出力（デバッグ用、必要に応じて有効化）
-            # 長いログ出力を複数行に分割
-            # print(
-            #     f"ID {track_id}: pixel_dist={pixel_distance:.1f}, "
-            #     f"norm_dist={normalized_distance:.1f}, height={person_height}, "
-            #     f"factor={avg_normalization_factor:.2f}"
-            # )
-
-            if normalized_distance < move_threshold_px:
-                # Stayed in the same area (using normalized distance)
+            if distance < move_threshold_px:
+                # Stayed in the same area
                 stay_info[track_id]["stay_duration"] += time_diff
             else:
-                # Moved significantly based on normalized distance
+                # Moved significantly
                 stay_info[track_id]["stay_duration"] = 0.0
 
-            # Update position, time, and person size regardless of movement
+            # Update position and time regardless of movement
             stay_info[track_id]["last_pos"] = current_pos
             stay_info[track_id]["last_time"] = current_time
-            stay_info[track_id]["person_height"] = person_height
-            stay_info[track_id]["last_normalization_factor"] = normalization_factor
 
             # Check for notification
             if stay_info[track_id]["stay_duration"] >= stay_threshold_sec and not stay_info[track_id]["notified"]:
-                # 通知メッセージを複数行に分割
+                # 長い通知メッセージを複数行に分割
                 notification = (
                     f"通知: ID {track_id} が座標 ({int(center_x)}, {int(center_y)}) "
-                    f"付近に {stay_threshold_sec}秒 以上滞在中。人物高さ: {person_height}px"
+                    f"付近に {stay_threshold_sec}秒 以上滞在中。"
                 )
                 notifications.append(notification)
                 stay_info[track_id]["notified"] = True  # Mark as notified
@@ -232,20 +195,18 @@ def update_stay_times(tracks, stay_info, current_time, move_threshold_px, stay_t
 def draw_tracking_info(frame_bgr, tracks, stay_info):
     """Draw bounding boxes, IDs, and stay duration on the frame."""
     for track in tracks:
-        # トラックの形式: [x1, y1, x2, y2, track_id, conf, cls_id, ...]
-        x1, y1, x2, y2, track_id = track[:5]
-        x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-        track_id = int(track_id)
+        if not track.is_confirmed():
+            continue
 
-        # 人物の高さを計算
-        person_height = y2 - y1
+        track_id = track.track_id
+        x1, y1, x2, y2 = map(int, track.to_ltrb())
 
         # Draw bounding box
         cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-        # Display ID, stay duration, and person height
+        # Display ID and stay duration
         duration = stay_info.get(track_id, {}).get("stay_duration", 0.0)
-        label = f"ID {track_id} ({duration:.1f}s, h:{person_height}px)"
+        label = f"ID {track_id} ({duration:.1f}s)"
         cv2.putText(frame_bgr, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
 
@@ -258,7 +219,6 @@ def main(
     device: str = "",
     stay_threshold_sec: float = 4.0,
     move_threshold_px: float = 20.0,
-    conf: float = 0.3,
 ):
     """
     指定座標での滞在時間を検知するメイン関数
@@ -270,8 +230,7 @@ def main(
         enable_video_display: プレビューを表示するかどうか
         device: 使用するデバイス (例: cpu, 0)
         stay_threshold_sec: 滞在通知を行う時間の閾値 (秒)
-        move_threshold_px: 同一場所とみなす移動距離の閾値 (ピクセル、正規化後の値)
-        conf: ByteTrackのtrack_thresh値 (検出信頼度閾値)
+        move_threshold_px: 同一場所とみなす移動距離の閾値 (ピクセル)
     """
     # モデルファイルの存在確認
     if not os.path.exists(model_path):
@@ -296,8 +255,7 @@ def main(
     print(f"ビデオ情報: {width}x{height} @ {fps:.2f}fps")
     print("出力コーデック: H.264 (avc1)")
     print(f"滞在検知閾値: {stay_threshold_sec} 秒")
-    print(f"移動検知閾値: {move_threshold_px} ピクセル (正規化後)")
-    print("※遠近を考慮し、人物の高さで正規化した座標変化検知を使用")
+    print(f"移動検知閾値: {move_threshold_px} ピクセル")
 
     # Initialize YOLO model (use a standard detection model if pose isn't needed)
     print(f"YOLOモデル: {model_path}")
@@ -318,9 +276,9 @@ def main(
     if model.task == "pose":
         print("情報: ポーズ推定モデルが指定されましたが、このスクリプトでは人物検出のみ行います。")
 
-    # Initialize ByteTrack tracker
-    print("ByteTrackトラッキング: 有効")
-    tracker = ByteTrack(track_thresh=conf, track_buffer=30, match_thresh=0.8)
+    # Initialize DeepSORT tracker
+    print("DeepSORTトラッキング: 有効")
+    tracker = DeepSort(max_age=30, n_init=3, nn_budget=100)  # Standard parameters
 
     # Initialize Performance Log
     perf_log_file, perf_log_f, perf_log_writer = initialize_perf_log(enable_perf_log, input_file, model_path)
@@ -336,8 +294,6 @@ def main(
     detection_times = []
     tracking_times = []
     stay_check_times = []
-    memory_usages = []  # メモリ使用量を記録するリスト
-    max_memory_usage = 0  # 最大メモリ使用量
     stay_info = {}  # Dictionary to store stay duration per track_id
 
     try:
@@ -374,11 +330,6 @@ def main(
             # 3. Draw visuals
             draw_tracking_info(frame_bgr, tracks, stay_info)
 
-            # 現在のメモリ使用量を測定（MB単位）
-            current_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-            memory_usages.append(current_memory_mb)
-            max_memory_usage = max(max_memory_usage, current_memory_mb)
-
             # Write performance log entry
             if enable_perf_log and perf_log_writer:
                 frame_end_time = time.time()
@@ -388,19 +339,18 @@ def main(
 
                 perf_log_writer.writerow(
                     [
-                        frame_idx,  # フレーム番号
-                        f"{elapsed_loop_time:.3f}",  # 経過時間（秒）
-                        f"{detection_time_ms:.1f}",  # 検出時間（ms）
-                        f"{tracking_time_ms:.1f}",  # 追跡時間（ms）
-                        f"{stay_check_time_ms:.1f}",  # 滞在チェック時間（ms）
-                        f"{total_frame_time_ms:.1f}",  # 合計処理時間（ms）
-                        objects_detected,  # 検出されたオブジェクト数
-                        objects_tracked,  # 追跡されたオブジェクト数
-                        f"{current_overall_fps:.1f}",  # 現在のFPS
-                        f"{current_memory_mb:.1f}",  # 現在のメモリ使用量（MB）
-                        Path(model_path).stem,  # モデル名
-                        "bytetrack",  # トラッカー名
-                        f"{len(notifications)} notifications" if notifications else "",  # メモ欄
+                        frame_idx,
+                        f"{elapsed_loop_time:.3f}",
+                        f"{detection_time_ms:.1f}",
+                        f"{tracking_time_ms:.1f}",
+                        f"{stay_check_time_ms:.1f}",
+                        f"{total_frame_time_ms:.1f}",
+                        objects_detected,
+                        objects_tracked,
+                        f"{current_overall_fps:.1f}",
+                        Path(model_path).stem,
+                        "deepsort",
+                        f"{len(notifications)} notifications" if notifications else "",
                     ]
                 )
 
@@ -408,12 +358,7 @@ def main(
             if frame_idx % 30 == 0 or frame_idx == 1:
                 elapsed = time.time() - loop_start_time
                 current_fps = frame_idx / elapsed if elapsed > 0 else 0
-                # 長いプログレスメッセージを分割
-                progress_msg = (
-                    f"処理中: {frame_idx}フレーム完了 "
-                    f"(現在の処理速度: {current_fps:.1f}fps, メモリ: {current_memory_mb:.1f}MB)"
-                )
-                print(progress_msg)
+                print(f"処理中: {frame_idx}フレーム完了 (現在の処理速度: {current_fps:.1f}fps)")
 
             # Save output frame
             out.write(frame_bgr)
@@ -438,11 +383,6 @@ def main(
         avg_detection_time = sum(detection_times) / len(detection_times) if detection_times else 0
         avg_tracking_time = sum(tracking_times) / len(tracking_times) if tracking_times else 0
         avg_stay_check_time = sum(stay_check_times) / len(stay_check_times) if stay_check_times else 0
-        avg_memory_usage = sum(memory_usages) / len(memory_usages) if memory_usages else 0
-
-        # 長い行を分割
-        total_avg_time = avg_detection_time + avg_tracking_time + avg_stay_check_time
-        print(f"平均合計処理時間 (フレームあたり): {total_avg_time:.1f} ms")
 
         print("--- 処理結果サマリ ---")
         print(f"合計処理時間: {total_time:.2f} 秒")
@@ -451,8 +391,10 @@ def main(
         print(f"平均検出時間: {avg_detection_time:.1f} ms")
         print(f"平均トラッキング時間: {avg_tracking_time:.1f} ms")
         print(f"平均滞在チェック時間: {avg_stay_check_time:.1f} ms")
-        print(f"平均メモリ使用量: {avg_memory_usage:.1f} MB")
-        print(f"最大メモリ使用量: {max_memory_usage:.1f} MB")
+
+        # 長い行を分割
+        total_avg_time = avg_detection_time + avg_tracking_time + avg_stay_check_time
+        print(f"平均合計処理時間 (フレームあたり): {total_avg_time:.1f} ms")
         print(f"出力動画: {output_file}")
         if enable_perf_log and perf_log_file:
             print(f"パフォーマンスログ: {perf_log_file}")
@@ -477,19 +419,13 @@ if __name__ == "__main__":
         "--stay-threshold",
         type=float,
         default=6.0,
-        help="滞在通知を行う時間の閾値 (秒, デフォルト: 6.0)",
+        help="滞在通知を行う時間の閾値 (秒, デフォルト: 4.0)",
     )
     parser.add_argument(
         "--move-threshold",
         type=float,
         default=20.0,
         help="同一場所とみなす移動距離の閾値 (ピクセル, デフォルト: 20.0)",
-    )
-    parser.add_argument(
-        "--conf",
-        type=float,
-        default=0.3,
-        help="ByteTrackのtrack_thresh (検出信頼度閾値, デフォルト: 0.3)",
     )
 
     args = parser.parse_args()
@@ -506,5 +442,4 @@ if __name__ == "__main__":
         args.device,
         args.stay_threshold,
         args.move_threshold,
-        args.conf,
     )
