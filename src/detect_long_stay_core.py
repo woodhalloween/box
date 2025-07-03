@@ -10,6 +10,8 @@ from datetime import datetime
 import cv2
 import psutil
 
+from behavior.analyzer import BehaviorAnalyzer
+
 
 def run_long_stay_detection(
     input_path,
@@ -43,6 +45,10 @@ def run_long_stay_detection(
 
     model = load_model_fn(model_path, device)
     tracker = tracker_init_fn()
+
+    # AOI座標は設定ファイルなどから読み込めるようにするのが望ましい
+    aoi_coordinates = [100, 150, width - 100, height - 150]
+    behavior_analyzer = BehaviorAnalyzer(aoi_coords=aoi_coordinates)
 
     out = None
     if output_path:
@@ -82,6 +88,10 @@ def run_long_stay_detection(
                 frame_rgb, model, tracker, conf, enable_pose
             )
 
+            behavior_notifications = behavior_analyzer.analyze_frame(tracks, current_time)
+            for note in behavior_notifications:
+                print(f"Frame {frame_idx}: {note}")
+
             stay_info, notifications, stay_ms = update_stay_fn(
                 tracks, stay_info, current_time, move_threshold, stay_threshold
             )
@@ -90,6 +100,18 @@ def run_long_stay_detection(
                 print(f"Frame {frame_idx}: {note}")
 
             if out or enable_video_display:
+                # AOIの矩形を描画
+                x_min, y_min, x_max, y_max = aoi_coordinates
+                cv2.rectangle(frame_bgr, (x_min, y_min), (x_max, y_max), (255, 255, 0), 2)
+                cv2.putText(
+                    frame_bgr,
+                    "Target Area",
+                    (x_min, y_min - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 0),
+                    2,
+                )
                 # Pass keypoints and enable_pose to draw_fn
                 frame_bgr = draw_fn(
                     frame_bgr,
