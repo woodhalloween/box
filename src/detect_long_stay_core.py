@@ -67,6 +67,17 @@ def run_long_stay_detection(
             writer.writerow(["# Video Properties", f"{width}x{height}", f"{fps}fps"])
             writer.writerow([])
 
+    # --- パフォーマンス計測用の変数を初期化 ---
+    time_reading_s = 0.0
+    time_cvtColor_s = 0.0
+    time_processing_s = 0.0  # det_ms + track_ms
+    time_behavior_s = 0.0
+    time_stay_update_s = 0.0
+    time_drawing_s = 0.0
+    time_writing_s = 0.0
+    time_showing_s = 0.0
+    # ------------------------------------
+
     stay_info = {}
     frame_idx = 0
     start_time = time.time()
@@ -75,31 +86,41 @@ def run_long_stay_detection(
 
     try:
         while True:
+            t_start = time.perf_counter()
             ret, frame_bgr = cap.read()
             if not ret:
                 break
+            time_reading_s += time.perf_counter() - t_start
 
             frame_idx += 1
             current_time = time.time()
+
+            t_start = time.perf_counter()
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            time_cvtColor_s += time.perf_counter() - t_start
 
             # Pass conf and enable_pose to process_frame_fn
             tracks, det_ms, track_ms, num_det, num_track, keypoints = process_frame_fn(
                 frame_rgb, model, tracker, conf, enable_pose
             )
+            time_processing_s += (det_ms + track_ms) / 1000.0
 
+            t_start = time.perf_counter()
             behavior_notifications = behavior_analyzer.analyze_frame(tracks, current_time)
+            time_behavior_s += time.perf_counter() - t_start
             for note in behavior_notifications:
                 print(f"Frame {frame_idx}: {note}")
 
             stay_info, notifications, stay_ms = update_stay_fn(
                 tracks, stay_info, current_time, move_threshold, stay_threshold
             )
+            time_stay_update_s += stay_ms / 1000.0
 
             for note in notifications:
                 print(f"Frame {frame_idx}: {note}")
 
             if out or enable_video_display:
+                t_start = time.perf_counter()
                 # AOIの矩形を描画
                 x_min, y_min, x_max, y_max = aoi_coordinates
                 cv2.rectangle(frame_bgr, (x_min, y_min), (x_max, y_max), (255, 255, 0), 2)
@@ -159,13 +180,19 @@ def run_long_stay_detection(
                             (0, 255, 255),
                             2,
                         )
+                time_drawing_s += time.perf_counter() - t_start
 
+                t_start = time.perf_counter()
                 if out:
                     out.write(frame_bgr)
+                time_writing_s += time.perf_counter() - t_start
+
+                t_start = time.perf_counter()
                 if enable_video_display:
                     cv2.imshow("Long Stay Detection", frame_bgr)
                     if cv2.waitKey(1) == 27:
                         break
+                time_showing_s += time.perf_counter() - t_start
 
             if enable_perf_log and frame_idx % max(1, int(fps)) == 0:
                 with open(perf_log_file, "a", newline="") as f:
@@ -209,3 +236,65 @@ def run_long_stay_detection(
         if enable_video_display:
             cv2.destroyAllWindows()
         print(f"処理完了。出力ファイル: {output_path}, ログ: {perf_log_file}")
+
+        # --- パフォーマンス分析レポートを出力 ---
+        total_time_spent = time.time() - start_time
+        if frame_idx > 0 and total_time_spent > 0:
+            print("\n--- Performance Analysis Report ---")
+            print(f"Total frames processed: {frame_idx}")
+            print(f"Total processing time: {total_time_spent:.2f} seconds")
+            print(f"Average FPS: {frame_idx / total_time_spent:.2f}")
+            print("-" * 33)
+
+            total_tracked_time = (
+                time_reading_s
+                + time_cvtColor_s
+                + time_processing_s
+                + time_behavior_s
+                + time_stay_update_s
+                + time_drawing_s
+                + time_writing_s
+                + time_showing_s
+            )
+            if total_tracked_time == 0:
+                total_tracked_time = 1  # ゼロ除算を避ける
+
+            print(f"Bottleneck Analysis (based on {total_tracked_time:.2f}s of tracked processing time):")
+            opencv_total_s = time_reading_s + time_cvtColor_s + time_drawing_s + time_writing_s + time_showing_s
+            ai_total_s = time_processing_s
+            other_total_s = time_behavior_s + time_stay_update_s
+
+            print(f"  - AI Processing:    {ai_total_s:7.2f}s ({ai_total_s / total_tracked_time * 100:5.1f}%)")
+            print(f"  - OpenCV Operations:  {opencv_total_s:7.2f}s ({opencv_total_s / total_tracked_time * 100:5.1f}%)")
+            print(f"  - Other (Python Logic):{other_total_s:7.2f}s ({other_total_s / total_tracked_time * 100:5.1f}%)")
+            print("-" * 33)
+
+            print("Detailed Breakdown:")
+            print(
+                f"  - AI (Detection+Track):     {time_processing_s:7.2f}s ({time_processing_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - OpenCV: Video Reading     {time_reading_s:7.2f}s ({time_reading_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - OpenCV: Color Convert     {time_cvtColor_s:7.2f}s ({time_cvtColor_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - OpenCV: Drawing           {time_drawing_s:7.2f}s ({time_drawing_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - OpenCV: Video Writing     {time_writing_s:7.2f}s ({time_writing_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - OpenCV: Displaying        {time_showing_s:7.2f}s ({time_showing_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - Python: Behavior Logic    {time_behavior_s:7.2f}s ({time_behavior_s / total_tracked_time * 100:5.1f}%)"
+            )
+            print(
+                f"  - Python: Stay-Time Logic   {time_stay_update_s:7.2f}s ({time_stay_update_s / total_tracked_time * 100:5.1f}%)"
+            )
+
+            untracked_time = total_time_spent - total_tracked_time
+            print(f"\nUntracked time (e.g., cv2.waitKey, perf_log I/O): {untracked_time:.2f}s")
+            print("--- End of Report ---")
