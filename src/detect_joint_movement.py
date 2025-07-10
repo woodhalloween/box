@@ -146,7 +146,9 @@ def process_video(video_path: str, output_csv_path: str | None, output_video_pat
         # 4. Drawing
         start_time = time.perf_counter()
         if landmarks is not None:
-            draw_analysis_results(frame, analysis_results, landmarks)
+            # draw_analysis_resultsが描画済みの画像を返すように変更されたため、
+            # 戻り値で変数を更新する
+            frame = draw_analysis_results(frame, analysis_results, landmarks)
             draw_landmarks(frame, landmarks)
         time_drawing += time.perf_counter() - start_time
 
