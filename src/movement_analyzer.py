@@ -111,4 +111,29 @@ class MovementAnalyzer:
             "state": tilt_state,
         }
 
+        # --- 頸部-体幹角度（うつむき）計算 ---
+        p_nose = landmarks[PoseLandmark.NOSE.value]
+
+        # 体幹の傾き計算で使った中心点を再利用
+        # 3次元座標のみを使用
+        p_hip_mid_3d = p_hip_mid[:3]
+        p_shoulder_mid_3d = p_shoulder_mid[:3]
+        p_nose_3d = p_nose[:3]
+
+        # 肩を中心に、腰、肩、鼻がなす角度を計算
+        neck_trunk_angle = calculate_angle(p_hip_mid_3d, p_shoulder_mid_3d, p_nose_3d)
+
+        # 状態を判定
+        neck_state = (
+            MovementState.HUNCH
+            if neck_trunk_angle < 165  # 165度未満なら猫背とみなす
+            else MovementState.STRAIGHT
+        )
+
+        analysis_results[Angle.NECK_TRUNK_ANGLE] = {
+            "angle": neck_trunk_angle,
+            "state": neck_state,
+        }
+        # --- ここまで ---
+
         return analysis_results

@@ -13,6 +13,7 @@ class Angle(Enum):
     RIGHT_KNEE = "RIGHT_KNEE"
     LEFT_KNEE = "LEFT_KNEE"
     BODY_TILT = "BODY_TILT"
+    NECK_TRUNK_ANGLE = "NECK_TRUNK_ANGLE"
 
 
 class MovementState(Enum):
@@ -24,3 +25,5 @@ class MovementState(Enum):
     STATIC = "STATIC"  # 静止
     FORWARD_TILT = "FORWARD_TILT"  # 前傾
     UPRIGHT = "UPRIGHT"  # 直立
+    HUNCH = "HUNCH"  # 猫背
+    STRAIGHT = "STRAIGHT"  # 直立（姿勢）
