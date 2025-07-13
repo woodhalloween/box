@@ -109,14 +109,15 @@ def draw_analysis_results(
         angle_jp_name = ANGLE_JP.get(angle, angle.value)
         state_jp_name = MOVEMENT_STATE_JP.get(state, state.value)
 
+        # 状態に応じてテキストの色を決定
+        text_color = (0, 0, 139)  # デフォルトは濃い赤
+        if angle == Angle.BODY_TILT and state == MovementState.FORWARD_TILT:
+            text_color = (0, 128, 0)  # 傾き検知（前傾）の場合は濃い緑
+        elif angle == Angle.NECK_TRUNK_ANGLE and state == MovementState.HUNCH:
+            text_color = (0, 192, 255)  # うつむき検知（猫背）の場合は濃い黄色（金色に近い）
+
         text = f"{angle_jp_name}: {angle_val:.1f} 度, {state_jp_name}"
-        img_with_text = draw_japanese_text(
-            img_with_text,
-            text,
-            (10, y_offset),
-            20,
-            (255, 0, 0),  # 白色から赤色に変更
-        )
+        img_with_text = draw_japanese_text(img_with_text, text, (10, y_offset), 20, text_color)
         y_offset += 30
 
     # --- デバッグ用の描画: 体幹の中心線と垂直線 ---
@@ -136,14 +137,29 @@ def draw_analysis_results(
         )
 
         # 体幹の中心線 (緑)
-        cv2.line(image, p_hip_mid, p_shoulder_mid, (0, 255, 0), 2)
-        # 垂直線 (青)
+        cv2.line(img_with_text, p_hip_mid, p_shoulder_mid, (0, 255, 0), 2)
+        # 垂直線 (青 -> 濃い青)
         cv2.line(
-            image,
+            img_with_text,
             p_hip_mid,
             (p_hip_mid[0], p_hip_mid[1] + 100),
-            (255, 0, 0),
+            (139, 0, 0),
             2,
         )
+
+    # --- デバッグ用の描画: うつむき検知線 ---
+    if Angle.NECK_TRUNK_ANGLE in results and landmarks is not None:
+        p_left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
+        p_right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
+        p_nose = landmarks[PoseLandmark.NOSE.value]
+
+        p_shoulder_mid = (
+            int(((p_left_shoulder[0] + p_right_shoulder[0]) / 2) * w),
+            int(((p_left_shoulder[1] + p_right_shoulder[1]) / 2) * h),
+        )
+        p_nose_pos = (int(p_nose[0] * w), int(p_nose[1] * h))
+
+        # 肩の中心から鼻への線 (黄色)
+        cv2.line(img_with_text, p_shoulder_mid, p_nose_pos, (0, 255, 255), 2)
 
     return img_with_text
