@@ -110,11 +110,11 @@ def draw_analysis_results(
         state_jp_name = MOVEMENT_STATE_JP.get(state, state.value)
 
         # 状態に応じてテキストの色を決定
-        text_color = (0, 0, 139)  # デフォルトは濃い赤
+        text_color = (139, 0, 0)  # デフォルトは濃い青
         if angle == Angle.BODY_TILT and state == MovementState.FORWARD_TILT:
             text_color = (0, 128, 0)  # 傾き検知（前傾）の場合は濃い緑
         elif angle == Angle.NECK_TRUNK_ANGLE and state == MovementState.HUNCH:
-            text_color = (0, 192, 255)  # うつむき検知（猫背）の場合は濃い黄色（金色に近い）
+            text_color = (11, 134, 184)  # うつむき検知（猫背）の場合は濃い山吹色
 
         text = f"{angle_jp_name}: {angle_val:.1f} 度, {state_jp_name}"
         img_with_text = draw_japanese_text(img_with_text, text, (10, y_offset), 20, text_color)
@@ -138,12 +138,12 @@ def draw_analysis_results(
 
         # 体幹の中心線 (緑)
         cv2.line(img_with_text, p_hip_mid, p_shoulder_mid, (0, 255, 0), 2)
-        # 垂直線 (青 -> 濃い青)
+        # 垂直線 (元の水色に戻す)
         cv2.line(
             img_with_text,
             p_hip_mid,
             (p_hip_mid[0], p_hip_mid[1] + 100),
-            (139, 0, 0),
+            (255, 0, 0),
             2,
         )
 

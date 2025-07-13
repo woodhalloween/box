@@ -27,3 +27,4 @@ class MovementState(Enum):
     UPRIGHT = "UPRIGHT"  # 直立
     HUNCH = "HUNCH"  # 猫背
     STRAIGHT = "STRAIGHT"  # 直立（姿勢）
+ 
