@@ -93,13 +93,24 @@ def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> None:
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
-    landmarks: np.ndarray,
+    landmarks: np.ndarray | None,
+    fps: float = 0.0,
+    disable_japanese: bool = False,
 ) -> np.ndarray:
     """分析結果を日本語で画像に描画する。"""
     h, w, _ = image.shape
     y_offset = 30
 
     img_with_text = image.copy()
+
+    # --- FPSを描画 ---
+    fps_text = f"FPS: {fps:.2f}"
+    # 右上に白で描画
+    img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
+    # --- ここまで ---
+
+    if disable_japanese:
+        return img_with_text
 
     for angle, data in results.items():
         angle_val = data["angle"]

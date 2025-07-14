@@ -77,8 +77,14 @@ def setup_video_writer(cap: cv2.VideoCapture, output_video_path: str) -> cv2.Vid
     return video_writer
 
 
-def process_video(video_path: str, output_csv_path: str | None, output_video_path: str | None):
+def process_video(video_path: str, output_csv_path: str | None, output_video_path: str | None, disable_japanese: bool):
     """
+    ビデオを処理して、関節の動きを分析し、結果をCSVとビデオに出力する。
+
+    :param video_path: 入力ビデオのパス
+    :param output_csv_path: 出力CSVファイルのパス
+    :param output_video_path: 出力ビデオファイルのパス
+    :param disable_japanese: 日本語テキストの描画を無効にするかどうか
     ビデオを処理し、関節の動きを分析して結果を出力する。
     """
     # 入力ビデオを開く
@@ -148,7 +154,19 @@ def process_video(video_path: str, output_csv_path: str | None, output_video_pat
         if landmarks is not None:
             # draw_analysis_resultsが描画済みの画像を返すように変更されたため、
             # 戻り値で変数を更新する
-            frame = draw_analysis_results(frame, analysis_results, landmarks)
+
+            # --- FPS計算と描画関数の呼び出し ---
+            loop_time = time.perf_counter() - loop_start_time
+            current_fps = 1.0 / loop_time if loop_time > 0 else 0
+
+            frame = draw_analysis_results(
+                image=frame,
+                results=analysis_results,
+                landmarks=landmarks,
+                fps=current_fps,
+                disable_japanese=disable_japanese,
+            )
+            # --- ここまで ---
             draw_landmarks(frame, landmarks)
         time_drawing += time.perf_counter() - start_time
 
@@ -217,9 +235,10 @@ def main() -> None:
     parser.add_argument("--video", type=str, required=True, help="Path to the input video file.")
     parser.add_argument("--output-csv", type=str, help="Path to the output CSV file to save results.")
     parser.add_argument("--output-video", type=str, help="Path to the output video file to save the processed video.")
+    parser.add_argument("--disable-japanese", action="store_true", help="Disable Japanese text in the output video.")
     args = parser.parse_args()
 
-    process_video(args.video, args.output_csv, args.output_video)
+    process_video(args.video, args.output_csv, args.output_video, args.disable_japanese)
 
 
 if __name__ == "__main__":
