@@ -18,7 +18,7 @@ import mediapipe as mp
 import numpy as np
 
 from src.definitions import Angle, MovementState
-from src.drawing_utils import draw_analysis_results
+from src.drawing_utils import draw_analysis_results, draw_landmarks
 from src.movement_analyzer import MovementAnalyzer
 from src.pose_estimator import PoseEstimator
 
@@ -444,7 +444,7 @@ def process_video(
     monitoring_duration: float = 60.0,
     alert_threshold: float = 0.7,
     hip_move_threshold: float = 25.0,
-    hip_stay_threshold: float = 5.0,
+    hip_stay_threshold: float = 60.0,
 ):
     """
     ビデオを処理して、関節の動きを分析し、結果をCSVとビデオに出力する。
@@ -546,6 +546,9 @@ def process_video(
                 disable_japanese=disable_japanese,
             )
 
+            # 骨格ランドマークを描画
+            draw_landmarks(frame, landmarks)
+
             # 腰の滞在情報を描画
             frame = draw_hip_stay_info(frame, hip_detector)
 
@@ -645,7 +648,7 @@ def main():
         "--hip-move-threshold", type=float, default=25.0, help="腰の移動判定閾値（ピクセル、デフォルト：25）"
     )
     parser.add_argument(
-        "--hip-stay-threshold", type=float, default=5.0, help="腰の長期滞在判定閾値（秒、デフォルト：5）"
+        "--hip-stay-threshold", type=float, default=60.0, help="腰の長期滞在判定閾値（秒、デフォルト：60）"
     )
 
     args = parser.parse_args()
