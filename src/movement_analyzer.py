@@ -103,8 +103,8 @@ class MovementAnalyzer:
         # 体幹の傾き角度を計算
         body_tilt_angle = calculate_angle(p_shoulder_mid_3d, p_hip_mid_3d, p_hip_vertical)
 
-        # 傾きの状態を判定
-        tilt_state = MovementState.FORWARD_TILT if body_tilt_angle > 15 else MovementState.UPRIGHT
+        # 傾きの状態を判定（150度以下で前傾判定）
+        tilt_state = MovementState.FORWARD_TILT if body_tilt_angle <= 150 else MovementState.UPRIGHT
 
         analysis_results[Angle.BODY_TILT] = {
             "angle": body_tilt_angle,
@@ -126,7 +126,7 @@ class MovementAnalyzer:
         # 状態を判定
         neck_state = (
             MovementState.HUNCH
-            if neck_trunk_angle < 165  # 165度未満なら猫背とみなす
+            if neck_trunk_angle <= 150  # 150度以下なら猫背とみなす
             else MovementState.STRAIGHT
         )
 

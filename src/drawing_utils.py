@@ -109,16 +109,20 @@ def draw_analysis_results(
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
     # --- ここまで ---
 
-    if disable_japanese:
-        return img_with_text
-
     for angle, data in results.items():
         angle_val = data["angle"]
         state = data["state"]
 
-        # マッピングから日本語名を取得。見つからなければEnumの値をそのまま使う
-        angle_jp_name = ANGLE_JP.get(angle, angle.value)
-        state_jp_name = MOVEMENT_STATE_JP.get(state, state.value)
+        if disable_japanese:
+            # 英語表示
+            angle_name = angle.value.replace("_", " ").title()
+            state_name = state.value
+            text = f"{angle_name}: {angle_val:.1f} deg, {state_name}"
+        else:
+            # 日本語表示
+            angle_jp_name = ANGLE_JP.get(angle, angle.value)
+            state_jp_name = MOVEMENT_STATE_JP.get(state, state.value)
+            text = f"{angle_jp_name}: {angle_val:.1f} 度, {state_jp_name}"
 
         # 状態に応じてテキストの色を決定
         text_color = (139, 0, 0)  # デフォルトは濃い青
@@ -127,8 +131,12 @@ def draw_analysis_results(
         elif angle == Angle.NECK_TRUNK_ANGLE and state == MovementState.HUNCH:
             text_color = (11, 134, 184)  # うつむき検知（猫背）の場合は濃い山吹色
 
-        text = f"{angle_jp_name}: {angle_val:.1f} 度, {state_jp_name}"
-        img_with_text = draw_japanese_text(img_with_text, text, (10, y_offset), 20, text_color)
+        if disable_japanese:
+            # 英語の場合は通常のOpenCV描画
+            cv2.putText(img_with_text, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+        else:
+            # 日本語の場合はPIL描画
+            img_with_text = draw_japanese_text(img_with_text, text, (10, y_offset), 20, text_color)
         y_offset += 30
 
     # --- デバッグ用の描画: 体幹の中心線と垂直線 ---
