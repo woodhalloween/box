@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import IO, Any
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
 from src.definitions import Angle, MovementState
@@ -58,112 +57,159 @@ class PostureMonitor:
         self.monitoring_duration = monitoring_duration
         self.alert_threshold = alert_threshold
         self.posture_history: deque[PostureSnapshot] = deque()
-        self.alert_count = 0
+        self.last_alert_time: float = 0
+        self.alert_cooldown: float = 30.0  # アラート間隔（秒）
 
     def update(self, timestamp: float, frame_number: int, analysis_results: dict) -> list[str]:
         """
-        新しい姿勢データで監視状態を更新し、アラートをチェックする
+        姿勢データを更新し、必要に応じてアラートを生成
 
         Args:
-            timestamp: タイムスタンプ（秒）
+            timestamp: タイムスタンプ
             frame_number: フレーム番号
             analysis_results: 関節分析結果
 
         Returns:
             アラートメッセージのリスト
         """
-        # 前傾姿勢判定と前傾スコア計算
-        is_forward_leaning, forward_lean_score = self._assess_forward_lean(analysis_results)
+        # 前傾姿勢判定
+        is_forward, score = self.is_forward_leaning_posture(analysis_results)
 
-        # 新しいスナップショットを作成
+        # スナップショット作成
         snapshot = PostureSnapshot(
             timestamp=timestamp,
             frame_number=frame_number,
-            analysis_results=analysis_results,
-            is_forward_leaning=is_forward_leaning,
-            forward_lean_score=forward_lean_score,
+            analysis_results=analysis_results.copy(),
+            is_forward_leaning=is_forward,
+            forward_lean_score=score,
         )
 
         # 履歴に追加
         self.posture_history.append(snapshot)
 
-        # 監視期間外の古いデータを削除
+        # 古いデータを削除（監視期間外）
         while self.posture_history and timestamp - self.posture_history[0].timestamp > self.monitoring_duration:
             self.posture_history.popleft()
 
         # アラートチェック
-        return self._check_alerts()
-
-    def _assess_forward_lean(self, analysis_results: dict) -> tuple[bool, float]:
-        """前傾姿勢の判定とスコア計算"""
-        if not analysis_results:
-            return False, 0.0
-
-        # 体幹の前傾角度を確認
-        torso_angle = None
-        neck_torso_angle = None
-
-        for angle, result in analysis_results.items():
-            if angle.name == "BODY_LEAN":
-                torso_angle = result.get("angle", 0)
-            elif angle.name == "NECK_TO_TORSO":
-                neck_torso_angle = result.get("angle", 0)
-
-        # 前傾スコアの計算（角度に基づく）
-        forward_lean_score = 0.0
-        is_leaning = False
-
-        if torso_angle is not None:
-            # 体の傾き角度（90度を基準として、小さいほど前傾）
-            if torso_angle < 75:  # 15度以上の前傾
-                forward_lean_score += (75 - torso_angle) / 75
-                is_leaning = True
-
-        if neck_torso_angle is not None:
-            # 首と胴体の角度（小さいほど前傾姿勢）
-            if neck_torso_angle < 160:  # 20度以上の前屈
-                forward_lean_score += (160 - neck_torso_angle) / 160
-
-        forward_lean_score = min(forward_lean_score, 1.0)
-
-        return is_leaning or forward_lean_score > 0.5, forward_lean_score
-
-    def _check_alerts(self) -> list[str]:
-        """アラート条件をチェック"""
-        alerts = []
-
-        if len(self.posture_history) < 10:  # 最低限のデータが必要
-            return alerts
-
-        # 前傾姿勢の割合を計算
-        forward_lean_count = sum(1 for snapshot in self.posture_history if snapshot.is_forward_leaning)
-        forward_lean_ratio = forward_lean_count / len(self.posture_history)
-
-        # アラート条件
-        if forward_lean_ratio >= self.alert_threshold:
-            self.alert_count += 1
-            alerts.append(f"前傾姿勢アラート: {forward_lean_ratio:.1%} (閾値: {self.alert_threshold:.1%})")
+        alerts = self._check_for_alerts(timestamp)
 
         return alerts
 
-    def get_current_stats(self) -> dict:
-        """現在の統計情報を取得"""
+    def is_forward_leaning_posture(self, analysis_results: dict) -> tuple[bool, float]:
+        """
+        前傾姿勢かどうかを判定
+
+        Args:
+            analysis_results: 関節分析結果
+
+        Returns:
+            (is_forward_leaning, confidence_score)
+        """
+        forward_indicators = []
+
+        # 体の傾き角度チェック
+        body_tilt = analysis_results.get(Angle.BODY_TILT)
+        if body_tilt and "angle" in body_tilt:
+            tilt_angle = body_tilt["angle"]
+            # 体の傾きが150度以下の場合は前傾の可能性
+            if tilt_angle <= 150:
+                forward_indicators.append(1.0 - (tilt_angle / 150.0))
+            else:
+                forward_indicators.append(0.0)
+
+        # 首・胴体角度チェック
+        neck_trunk = analysis_results.get(Angle.NECK_TRUNK_ANGLE)
+        if neck_trunk and "angle" in neck_trunk:
+            neck_angle = neck_trunk["angle"]
+            # 首が前に出ている状態（150度以下）
+            if neck_angle <= 150:
+                forward_indicators.append(1.0 - (neck_angle / 150.0))
+            else:
+                forward_indicators.append(0.0)
+
+        # 肩の前方傾斜チェック
+        right_shoulder = analysis_results.get(Angle.RIGHT_SHOULDER)
+        left_shoulder = analysis_results.get(Angle.LEFT_SHOULDER)
+
+        shoulder_flexion_count = 0
+        shoulder_total = 0
+
+        for shoulder in [right_shoulder, left_shoulder]:
+            if shoulder and "state" in shoulder:
+                shoulder_total += 1
+                if shoulder["state"] == MovementState.FLEXION:
+                    shoulder_flexion_count += 1
+
+        if shoulder_total > 0:
+            shoulder_flexion_ratio = shoulder_flexion_count / shoulder_total
+            forward_indicators.append(shoulder_flexion_ratio)
+
+        # 前傾スコア計算
+        if forward_indicators:
+            forward_score = sum(forward_indicators) / len(forward_indicators)
+            is_leaning = forward_score > 0.5  # 50%以上で前傾と判定
+            return is_leaning, forward_score
+
+        return False, 0.0
+
+    def _check_for_alerts(self, current_time: float) -> list[str]:
+        """アラート条件をチェック"""
+        alerts = []
+
+        # クールダウン期間中はアラートしない
+        if current_time - self.last_alert_time < self.alert_cooldown:
+            return alerts
+
+        # 監視期間に達していない場合はチェックしない
         if not self.posture_history:
-            return {
-                "forward_lean_ratio": 0.0,
-                "avg_forward_lean_score": 0.0,
-                "sample_count": 0,
-            }
+            return alerts
 
-        forward_lean_count = sum(1 for snapshot in self.posture_history if snapshot.is_forward_leaning)
-        forward_lean_ratio = forward_lean_count / len(self.posture_history)
+        oldest_timestamp = self.posture_history[0].timestamp
+        if current_time - oldest_timestamp < self.monitoring_duration:
+            return alerts
 
-        avg_score = sum(snapshot.forward_lean_score for snapshot in self.posture_history) / len(self.posture_history)
+        # 前傾姿勢の割合を計算
+        forward_leaning_count = sum(1 for snapshot in self.posture_history if snapshot.is_forward_leaning)
+        total_count = len(self.posture_history)
+
+        if total_count > 0:
+            forward_ratio = forward_leaning_count / total_count
+
+            if forward_ratio >= self.alert_threshold:
+                # 平均前傾スコア計算
+                avg_score = sum(snapshot.forward_lean_score for snapshot in self.posture_history) / total_count
+
+                alert_msg = (
+                    f"⚠️ 長時間前傾姿勢検知: {self.monitoring_duration:.0f}秒間の"
+                    f"{forward_ratio:.1%}が前傾姿勢 (平均スコア: {avg_score:.2f})"
+                )
+                alerts.append(alert_msg)
+
+                self.last_alert_time = current_time
+
+        return alerts
+
+    def get_status(self) -> dict[str, Any]:
+        """現在の監視状態を取得"""
+        if not self.posture_history:
+            return {"monitoring_duration": 0, "forward_ratio": 0, "avg_score": 0, "sample_count": 0}
+
+        oldest_timestamp = self.posture_history[0].timestamp
+        latest_timestamp = self.posture_history[-1].timestamp
+        monitoring_duration = latest_timestamp - oldest_timestamp
+
+        forward_count = sum(1 for s in self.posture_history if s.is_forward_leaning)
+        total_count = len(self.posture_history)
+        forward_ratio = forward_count / total_count if total_count > 0 else 0
+
+        avg_score = sum(s.forward_lean_score for s in self.posture_history) / total_count if total_count > 0 else 0
 
         return {
-            "forward_lean_ratio": forward_lean_ratio,
-            "avg_forward_lean_score": avg_score,
-            "sample_count": len(self.posture_history),
+            "monitoring_duration": monitoring_duration,
+            "forward_ratio": forward_ratio,
+            "avg_score": avg_score,
+            "sample_count": total_count,
         }
 
 
@@ -192,8 +238,10 @@ class HipBasedStayDetector:
             height, width = frame_shape[:2]
 
             # 左右の腰の位置を取得
-            left_hip = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
-            right_hip = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
+            from mediapipe.python.solutions.pose import PoseLandmark
+
+            left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
+            right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
 
             # 信頼度チェック
             if left_hip[3] < self.confidence_threshold or right_hip[3] < self.confidence_threshold:
@@ -367,7 +415,7 @@ def write_results_to_csv(
             row[f"{angle_name}_state"] = MovementState.STATIC.name
 
     # 前傾姿勢監視データ
-    posture_stats = posture_monitor.get_current_stats()
+    posture_stats = posture_monitor.get_status()
 
     # 最新の前傾姿勢判定
     is_forward_leaning = False
@@ -381,8 +429,8 @@ def write_results_to_csv(
         {
             "is_forward_leaning": is_forward_leaning,
             "forward_lean_score": forward_lean_score,
-            "forward_lean_ratio": posture_stats["forward_lean_ratio"],
-            "avg_forward_lean_score": posture_stats["avg_forward_lean_score"],
+            "forward_lean_ratio": posture_stats["forward_ratio"],
+            "avg_forward_lean_score": posture_stats["avg_score"],
         }
     )
 
@@ -402,6 +450,25 @@ def write_results_to_csv(
     )
 
     csv_writer.writerow(row)
+
+
+def draw_posture_alerts(frame, alerts: list[str], status: dict[str, Any]):
+    """フレームに前傾姿勢アラートと状態を描画"""
+    y_offset = 30
+
+    # アラート表示
+    for alert in alerts:
+        cv2.putText(frame, alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)  # type: ignore
+        y_offset += 30
+
+    # 監視状態表示
+    if status["sample_count"] > 0:
+        status_text = (
+            f"Monitor: {status['monitoring_duration']:.1f}s | "
+            f"Forward: {status['forward_ratio']:.1%} | "
+            f"Score: {status['avg_score']:.2f}"
+        )
+        cv2.putText(frame, status_text, (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)  # type: ignore
 
 
 def draw_hip_stay_info(frame: np.ndarray, hip_detector: HipBasedStayDetector) -> np.ndarray:
@@ -552,11 +619,11 @@ def process_video(
             # 腰の滞在情報を描画
             frame = draw_hip_stay_info(frame, hip_detector)
 
-        # アラート表示
-        if alerts:
-            for i, alert in enumerate(alerts):
-                cv2.putText(frame, alert, (10, 30 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)  # type: ignore
+        # アラートと監視状態の描画
+        status = posture_monitor.get_status()
+        draw_posture_alerts(frame, alerts, status)
 
+        # 腰滞在アラート表示
         if hip_alert:
             cv2.putText(  # type: ignore
                 frame,
@@ -569,6 +636,13 @@ def process_video(
             )
 
         time_drawing += time.perf_counter() - start_time
+
+        # アラート表示（OR条件：前傾姿勢 OR 腰滞在）
+        for alert in alerts:
+            print(f"フレーム {frame_count}: {alert}")
+
+        if hip_alert:
+            print(f"フレーム {frame_count}: {hip_alert}")
 
         # Write the frame to the output video
         video_writer.write(frame)
@@ -615,12 +689,12 @@ def process_video(
     print("---------------------------------")
 
     # 前傾姿勢監視結果
-    posture_stats = posture_monitor.get_current_stats()
+    final_status = posture_monitor.get_status()
     print("--- 前傾姿勢監視結果 ---")
-    print(f"監視期間: {monitoring_duration}秒")
-    print(f"前傾姿勢割合: {posture_stats['forward_lean_ratio']:.1%}")
-    print(f"平均前傾スコア: {posture_stats['avg_forward_lean_score']:.3f}")
-    print(f"分析サンプル数: {posture_stats['sample_count']}")
+    print(f"監視期間: {final_status['monitoring_duration']:.1f}秒")
+    print(f"前傾姿勢割合: {final_status['forward_ratio']:.1%}")
+    print(f"平均前傾スコア: {final_status['avg_score']:.3f}")
+    print(f"分析サンプル数: {final_status['sample_count']}")
 
     # 腰ベース滞在検知結果
     hip_status = hip_detector.get_current_status()
