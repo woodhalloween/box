@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import IO, Any
 
 import cv2
+import mediapipe as mp
 import numpy as np
 
 from src.definitions import Angle, MovementState
@@ -238,10 +239,8 @@ class HipBasedStayDetector:
             height, width = frame_shape[:2]
 
             # 左右の腰の位置を取得
-            from mediapipe.python.solutions.pose import PoseLandmark
-
-            left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
-            right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
+            left_hip = landmarks[mp.solutions.pose.PoseLandmark.LEFT_HIP.value]
+            right_hip = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
 
             # 信頼度チェック
             if left_hip[3] < self.confidence_threshold or right_hip[3] < self.confidence_threshold:
@@ -333,6 +332,84 @@ class HipBasedStayDetector:
             "confidence": self.stay_info.confidence_score,
             "is_long_stay": self.stay_info.stay_duration >= self.stay_threshold,
         }
+
+
+class KneeAngleMonitor:
+    """膝角度の秒毎中央値と5秒移動平均を監視し、閾値を下回ると通知する"""
+
+    def __init__(self, threshold_deg: float = 90.0, moving_window_seconds: int = 5) -> None:
+        self.threshold_deg = threshold_deg
+        self.moving_window_seconds = moving_window_seconds
+
+        # 現在集計中の秒と、その秒のフレーム内角度リスト
+        self.current_second: int | None = None
+        self.current_left_values: list[float] = []
+        self.current_right_values: list[float] = []
+
+        # 直近N秒の中央値履歴（左/右）
+        self.medians_history: deque[tuple[int, float, float]] = deque(maxlen=moving_window_seconds)
+
+    def _finalize_second(self, second: int) -> tuple[int, float, float] | None:
+        if not self.current_left_values or not self.current_right_values:
+            return None
+        left_med = float(np.median(self.current_left_values))
+        right_med = float(np.median(self.current_right_values))
+        self.medians_history.append((second, left_med, right_med))
+        # 次秒に備えてリセット
+        self.current_left_values.clear()
+        self.current_right_values.clear()
+        return (second, left_med, right_med)
+
+    def _moving_average(self) -> tuple[float | None, float | None]:
+        if not self.medians_history:
+            return None, None
+        left_vals = [m[1] for m in self.medians_history]
+        right_vals = [m[2] for m in self.medians_history]
+        return float(np.mean(left_vals)), float(np.mean(right_vals))
+
+    def update(self, timestamp_s: float, analysis_results: dict[Angle, dict[str, Any]]) -> list[str]:
+        """各フレームで呼び出し。秒境界で集計を確定し、通知を返す。"""
+        alerts: list[str] = []
+        sec = int(timestamp_s)
+
+        # 膝角度を取得
+        left_knee = analysis_results.get(Angle.LEFT_KNEE)
+        right_knee = analysis_results.get(Angle.RIGHT_KNEE)
+        if left_knee and "angle" in left_knee:
+            self.current_left_values.append(float(left_knee["angle"]))
+        if right_knee and "angle" in right_knee:
+            self.current_right_values.append(float(right_knee["angle"]))
+
+        # 秒が切り替わったら前秒を確定
+        if self.current_second is None:
+            self.current_second = sec
+            return alerts
+
+        if sec != self.current_second:
+            finalized = self._finalize_second(self.current_second)
+            prev_second = self.current_second
+            self.current_second = sec
+
+            if finalized is not None:
+                _, left_med, right_med = finalized
+                left_ma, right_ma = self._moving_average()
+
+                # 閾値判定（中央値、移動平均のどちらか）
+                def below(x: float | None) -> bool:
+                    return x is not None and x < self.threshold_deg
+
+                triggered: list[str] = []
+                if left_med < self.threshold_deg or right_med < self.threshold_deg:
+                    triggered.append(f"膝角度(中央値) 左:{left_med:.1f}° 右:{right_med:.1f}°")
+                if below(left_ma) or below(right_ma):
+                    lm = f"{left_ma:.1f}°" if left_ma is not None else "-"
+                    rm = f"{right_ma:.1f}°" if right_ma is not None else "-"
+                    triggered.append(f"膝角度(移動平均5秒) 左:{lm} 右:{rm}")
+
+                if triggered:
+                    alerts.append(f"⚠️ 膝角度低下検知 t={prev_second}秒 | " + " / ".join(triggered))
+
+        return alerts
 
 
 def setup_csv_writer(csv_file: IO):
@@ -543,6 +620,7 @@ def process_video(
     analyzer = MovementAnalyzer()
     posture_monitor = PostureMonitor(monitoring_duration, alert_threshold)
     hip_detector = HipBasedStayDetector(hip_move_threshold, hip_stay_threshold)
+    knee_monitor = KneeAngleMonitor(threshold_deg=90.0, moving_window_seconds=5)
 
     # パフォーマンス計測用の変数を初期化
     frame_count = 0
@@ -618,6 +696,10 @@ def process_video(
 
             # 腰の滞在情報を描画
             frame = draw_hip_stay_info(frame, hip_detector)
+
+            # 膝角度監視（秒毎集計＋移動平均）
+            knee_alerts = knee_monitor.update(timestamp, analysis_results)
+            alerts.extend(knee_alerts)
 
         # アラートと監視状態の描画
         status = posture_monitor.get_status()
