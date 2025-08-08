@@ -182,8 +182,7 @@ class PostureMonitor:
                 avg_score = sum(snapshot.forward_lean_score for snapshot in self.posture_history) / total_count
 
                 alert_msg = (
-                    f"⚠️ 長時間前傾姿勢検知: {self.monitoring_duration:.0f}秒間の"
-                    f"{forward_ratio:.1%}が前傾姿勢 (平均スコア: {avg_score:.2f})"
+                    f"[!] Forward Leaning: {self.monitoring_duration:.0f}s {forward_ratio:.1%} (Score: {avg_score:.2f})"
                 )
                 alerts.append(alert_msg)
 
@@ -317,7 +316,7 @@ class HipBasedStayDetector:
         # 長期滞在判定
         if self.stay_info.stay_duration >= self.stay_threshold and not self.stay_info.notified:
             self.stay_info.notified = True
-            return f"長期滞在検出: {self.stay_info.stay_duration:.1f}秒間"
+            return f"[!] Long Stay Detected: {self.stay_info.stay_duration:.1f}s"
 
         return None
 
@@ -348,6 +347,9 @@ class KneeAngleMonitor:
 
         # 直近N秒の中央値履歴（左/右）
         self.medians_history: deque[tuple[int, float, float]] = deque(maxlen=moving_window_seconds)
+
+        # 現在表示中のアラートメッセージ
+        self.current_alert_message: str | None = None
 
     def _finalize_second(self, second: int) -> tuple[int, float, float] | None:
         if not self.current_left_values or not self.current_right_values:
@@ -400,16 +402,21 @@ class KneeAngleMonitor:
 
                 triggered: list[str] = []
                 if left_med < self.threshold_deg or right_med < self.threshold_deg:
-                    triggered.append(f"膝角度(中央値) 左:{left_med:.1f}° 右:{right_med:.1f}°")
+                    triggered.append(f"Median L:{left_med:.1f} R:{right_med:.1f}")
                 if below(left_ma) or below(right_ma):
-                    lm = f"{left_ma:.1f}°" if left_ma is not None else "-"
-                    rm = f"{right_ma:.1f}°" if right_ma is not None else "-"
-                    triggered.append(f"膝角度(移動平均5秒) 左:{lm} 右:{rm}")
+                    lm = f"{left_ma:.1f}" if left_ma is not None else "-"
+                    rm = f"{right_ma:.1f}" if right_ma is not None else "-"
+                    triggered.append(f"MA5 L:{lm} R:{rm}")
 
                 if triggered:
-                    alerts.append(f"⚠️ 膝角度低下検知 t={prev_second}秒 | " + " / ".join(triggered))
+                    self.current_alert_message = f"[!] Knee Angle Low: {prev_second}s | " + " / ".join(triggered)
+                    alerts.append(self.current_alert_message)
 
         return alerts
+
+    def get_current_alert(self) -> str | None:
+        """現在表示中のアラートメッセージを取得"""
+        return self.current_alert_message
 
 
 def setup_csv_writer(csv_file: IO):
@@ -529,13 +536,18 @@ def write_results_to_csv(
     csv_writer.writerow(row)
 
 
-def draw_posture_alerts(frame, alerts: list[str], status: dict[str, Any]):
+def draw_posture_alerts(frame, alerts: list[str], status: dict[str, Any], knee_alert: str | None):
     """フレームに前傾姿勢アラートと状態を描画"""
     y_offset = 30
 
     # アラート表示
     for alert in alerts:
         cv2.putText(frame, alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)  # type: ignore
+        y_offset += 30
+
+    # 膝角度アラートの持続表示
+    if knee_alert:
+        cv2.putText(frame, knee_alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)  # type: ignore
         y_offset += 30
 
     # 監視状態表示
@@ -632,8 +644,8 @@ def process_video(
     time_writing = 0.0
     time_monitoring = 0.0
 
-    print(f"前傾姿勢監視開始: {monitoring_duration}秒間, 閾値: {alert_threshold:.1%}")
-    print(f"腰ベース滞在検知開始: 移動閾値{hip_move_threshold}px, 滞在閾値{hip_stay_threshold}秒")
+    print(f"Forward Leaning Monitor: {monitoring_duration}s, Threshold: {alert_threshold:.1%}")
+    print(f"Hip-based Stay Detection: Move {hip_move_threshold}px, Stay {hip_stay_threshold}s")
 
     while cap.isOpened():
         loop_start_time = time.perf_counter()
@@ -703,7 +715,7 @@ def process_video(
 
         # アラートと監視状態の描画
         status = posture_monitor.get_status()
-        draw_posture_alerts(frame, alerts, status)
+        draw_posture_alerts(frame, alerts, status, knee_monitor.get_current_alert())
 
         # 腰滞在アラート表示
         if hip_alert:
@@ -721,10 +733,10 @@ def process_video(
 
         # アラート表示（OR条件：前傾姿勢 OR 腰滞在）
         for alert in alerts:
-            print(f"フレーム {frame_count}: {alert}")
+            print(f"Frame {frame_count}: {alert}")
 
         if hip_alert:
-            print(f"フレーム {frame_count}: {hip_alert}")
+            print(f"Frame {frame_count}: {hip_alert}")
 
         # Write the frame to the output video
         video_writer.write(frame)
@@ -772,18 +784,18 @@ def process_video(
 
     # 前傾姿勢監視結果
     final_status = posture_monitor.get_status()
-    print("--- 前傾姿勢監視結果 ---")
-    print(f"監視期間: {final_status['monitoring_duration']:.1f}秒")
-    print(f"前傾姿勢割合: {final_status['forward_ratio']:.1%}")
-    print(f"平均前傾スコア: {final_status['avg_score']:.3f}")
-    print(f"分析サンプル数: {final_status['sample_count']}")
+    print("--- Forward Leaning Results ---")
+    print(f"Monitor Duration: {final_status['monitoring_duration']:.1f}s")
+    print(f"Forward Ratio: {final_status['forward_ratio']:.1%}")
+    print(f"Average Score: {final_status['avg_score']:.3f}")
+    print(f"Sample Count: {final_status['sample_count']}")
 
     # 腰ベース滞在検知結果
     hip_status = hip_detector.get_current_status()
-    print("--- 腰ベース滞在検知結果 ---")
-    print(f"最終滞在時間: {hip_status['stay_duration']:.1f}秒")
-    print(f"最終信頼度: {hip_status['confidence']:.3f}")
-    print(f"最終長期滞在状態: {hip_status['is_long_stay']}")
+    print("--- Hip-based Stay Results ---")
+    print(f"Final Stay Duration: {hip_status['stay_duration']:.1f}s")
+    print(f"Final Confidence: {hip_status['confidence']:.3f}")
+    print(f"Final Long Stay: {hip_status['is_long_stay']}")
 
     print("--- End of Report ---")
 
