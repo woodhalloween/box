@@ -10,6 +10,7 @@ import csv
 import time
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import IO, Any
 
@@ -614,10 +615,11 @@ def process_video(
 
     # 出力ファイルパスが指定されていない場合、デフォルトパスを生成
     p = Path(video_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if output_csv_path is None:
-        output_csv_path = f"output/{p.stem}_integrated_analysis.csv"
+        output_csv_path = f"output/{p.stem}_integrated_analysis_{timestamp}.csv"
     if output_video_path is None:
-        output_video_path = f"output/{p.stem}_integrated_output.mp4"
+        output_video_path = f"output/{p.stem}_integrated_output_{timestamp}.mp4"
 
     # 出力ディレクトリを作成
     Path(output_csv_path).parent.mkdir(parents=True, exist_ok=True)
@@ -644,6 +646,9 @@ def process_video(
     time_writing = 0.0
     time_monitoring = 0.0
 
+    print(f"Processing video: {video_path}")
+    print(f"Output CSV: {output_csv_path}")
+    print(f"Output Video: {output_video_path}")
     print(f"Forward Leaning Monitor: {monitoring_duration}s, Threshold: {alert_threshold:.1%}")
     print(f"Hip-based Stay Detection: Move {hip_move_threshold}px, Stay {hip_stay_threshold}s")
 
