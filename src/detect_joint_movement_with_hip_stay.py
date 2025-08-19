@@ -65,9 +65,7 @@ class PostureMonitor:
         self.last_alert_time: float = 0
         self.alert_cooldown: float = 30.0  # アラート間隔（秒）
 
-    def update(
-        self, timestamp: float, frame_number: int, analysis_results: dict
-    ) -> list[str]:
+    def update(self, timestamp: float, frame_number: int, analysis_results: dict) -> list[str]:
         """
         姿勢データを更新し、必要に応じてアラートを生成
 
@@ -95,10 +93,7 @@ class PostureMonitor:
         self.posture_history.append(snapshot)
 
         # 古いデータを削除（監視期間外）
-        while (
-            self.posture_history
-            and timestamp - self.posture_history[0].timestamp > self.monitoring_duration
-        ):
+        while self.posture_history and timestamp - self.posture_history[0].timestamp > self.monitoring_duration:
             self.posture_history.popleft()
 
         # アラートチェック
@@ -178,9 +173,7 @@ class PostureMonitor:
             return alerts
 
         # 前傾姿勢の割合を計算
-        forward_leaning_count = sum(
-            1 for snapshot in self.posture_history if snapshot.is_forward_leaning
-        )
+        forward_leaning_count = sum(1 for snapshot in self.posture_history if snapshot.is_forward_leaning)
         total_count = len(self.posture_history)
 
         if total_count > 0:
@@ -188,14 +181,11 @@ class PostureMonitor:
 
             if forward_ratio >= self.alert_threshold:
                 # 平均前傾スコア計算
-                avg_score = (
-                    sum(
-                        snapshot.forward_lean_score for snapshot in self.posture_history
-                    )
-                    / total_count
-                )
+                avg_score = sum(snapshot.forward_lean_score for snapshot in self.posture_history) / total_count
 
-                alert_msg = f"[!] Forward Leaning: {self.monitoring_duration:.0f}s {forward_ratio:.1%} (Score: {avg_score:.2f})"
+                alert_msg = (
+                    f"[!] Forward Leaning: {self.monitoring_duration:.0f}s {forward_ratio:.1%} (Score: {avg_score:.2f})"
+                )
                 alerts.append(alert_msg)
 
                 self.last_alert_time = current_time
@@ -220,11 +210,7 @@ class PostureMonitor:
         total_count = len(self.posture_history)
         forward_ratio = forward_count / total_count if total_count > 0 else 0
 
-        avg_score = (
-            sum(s.forward_lean_score for s in self.posture_history) / total_count
-            if total_count > 0
-            else 0
-        )
+        avg_score = sum(s.forward_lean_score for s in self.posture_history) / total_count if total_count > 0 else 0
 
         return {
             "monitoring_duration": monitoring_duration,
@@ -260,16 +246,12 @@ class HipBasedStayDetector:
         self.confidence_threshold = confidence_threshold
         self.use_normalization = use_normalization
         self.normalization_base = (
-            normalization_base
-            if normalization_base in {"torso", "shoulder", "screen"}
-            else "torso"
+            normalization_base if normalization_base in {"torso", "shoulder", "screen"} else "torso"
         )
         self.stay_info: HipStayInfo | None = None
         self.current_frame_idx = 0
 
-    def _compute_person_scale(
-        self, landmarks: np.ndarray, frame_shape: tuple
-    ) -> float | None:
+    def _compute_person_scale(self, landmarks: np.ndarray, frame_shape: tuple) -> float | None:
         """人物スケールを計算して返す。
 
         normalization_base に従って以下のいずれかを返す:
@@ -306,17 +288,11 @@ class HipBasedStayDetector:
                     return None
                 l_sh_px = to_px(l_sh)
                 r_sh_px = to_px(r_sh)
-                shoulder_width = float(
-                    np.sqrt(
-                        (l_sh_px[0] - r_sh_px[0]) ** 2 + (l_sh_px[1] - r_sh_px[1]) ** 2
-                    )
-                )
+                shoulder_width = float(np.sqrt((l_sh_px[0] - r_sh_px[0]) ** 2 + (l_sh_px[1] - r_sh_px[1]) ** 2))
                 return shoulder_width if shoulder_width > 0 else None
 
             # torso
-            if not (
-                visible(l_sh) and visible(r_sh) and visible(l_hip) and visible(r_hip)
-            ):
+            if not (visible(l_sh) and visible(r_sh) and visible(l_hip) and visible(r_hip)):
                 return None
 
             l_sh_px = to_px(l_sh)
@@ -332,19 +308,12 @@ class HipBasedStayDetector:
                 (l_hip_px[0] + r_hip_px[0]) / 2.0,
                 (l_hip_px[1] + r_hip_px[1]) / 2.0,
             )
-            torso_len = float(
-                np.sqrt(
-                    (shoulder_mid[0] - hip_mid[0]) ** 2
-                    + (shoulder_mid[1] - hip_mid[1]) ** 2
-                )
-            )
+            torso_len = float(np.sqrt((shoulder_mid[0] - hip_mid[0]) ** 2 + (shoulder_mid[1] - hip_mid[1]) ** 2))
             return torso_len if torso_len > 0 else None
         except (IndexError, TypeError):
             return None
 
-    def extract_hip_center(
-        self, landmarks: np.ndarray, frame_shape: tuple
-    ) -> tuple[float, float, float] | None:
+    def extract_hip_center(self, landmarks: np.ndarray, frame_shape: tuple) -> tuple[float, float, float] | None:
         """腰の中心座標と信頼度を抽出。片方の腰だけでも検出を試みる。"""
         if landmarks is None:
             return None
@@ -385,9 +354,7 @@ class HipBasedStayDetector:
         except (IndexError, TypeError):
             return None
 
-    def update(
-        self, landmarks: np.ndarray, frame_shape: tuple, timestamp: float
-    ) -> str | None:
+    def update(self, landmarks: np.ndarray, frame_shape: tuple, timestamp: float) -> str | None:
         """滞在検知を更新"""
         self.current_frame_idx += 1
 
@@ -453,10 +420,7 @@ class HipBasedStayDetector:
         self.stay_info.confidence_score = confidence
 
         # 長期滞在判定
-        if (
-            self.stay_info.stay_duration >= self.stay_threshold
-            and not self.stay_info.notified
-        ):
+        if self.stay_info.stay_duration >= self.stay_threshold and not self.stay_info.notified:
             self.stay_info.notified = True
             return f"[!] Long Stay Detected: {self.stay_info.stay_duration:.1f}s"
 
@@ -483,9 +447,7 @@ class HipBasedStayDetector:
 class KneeAngleMonitor:
     """膝角度の秒毎中央値と5秒移動平均を監視し、閾値を下回ると通知する"""
 
-    def __init__(
-        self, threshold_deg: float = 90.0, moving_window_seconds: int = 5
-    ) -> None:
+    def __init__(self, threshold_deg: float = 90.0, moving_window_seconds: int = 5) -> None:
         self.threshold_deg = threshold_deg
         self.moving_window_seconds = moving_window_seconds
 
@@ -495,9 +457,7 @@ class KneeAngleMonitor:
         self.current_right_values: list[float] = []
 
         # 直近N秒の中央値履歴（左/右）
-        self.medians_history: deque[tuple[int, float, float]] = deque(
-            maxlen=moving_window_seconds
-        )
+        self.medians_history: deque[tuple[int, float, float]] = deque(maxlen=moving_window_seconds)
 
         # 現在表示中のアラートメッセージ
         self.current_alert_message: str | None = None
@@ -520,9 +480,7 @@ class KneeAngleMonitor:
         right_vals = [m[2] for m in self.medians_history]
         return float(np.mean(left_vals)), float(np.mean(right_vals))
 
-    def update(
-        self, timestamp_s: float, analysis_results: dict[Angle, dict[str, Any]]
-    ) -> list[str]:
+    def update(self, timestamp_s: float, analysis_results: dict[Angle, dict[str, Any]]) -> list[str]:
         """各フレームで呼び出し。秒境界で集計を確定し、通知を返す。"""
         alerts: list[str] = []
         sec = int(timestamp_s)
@@ -562,9 +520,7 @@ class KneeAngleMonitor:
                     triggered.append(f"MA5 L:{lm} R:{rm}")
 
                 if triggered:
-                    self.current_alert_message = (
-                        f"[!] Knee Angle Low: {prev_second}s | " + " / ".join(triggered)
-                    )
+                    self.current_alert_message = f"[!] Knee Angle Low: {prev_second}s | " + " / ".join(triggered)
                     alerts.append(self.current_alert_message)
 
         return alerts
@@ -733,12 +689,7 @@ def write_results_to_csv(
                     except (TypeError, ValueError):
                         return False
 
-                if (
-                    visible(l_sh)
-                    and visible(r_sh)
-                    and visible(l_hip)
-                    and visible(r_hip)
-                ):
+                if visible(l_sh) and visible(r_sh) and visible(l_hip) and visible(r_hip):
                     l_sh_px = (l_sh[0] * width, l_sh[1] * height)
                     r_sh_px = (r_sh[0] * width, r_sh[1] * height)
                     l_hip_px = (l_hip[0] * width, l_hip[1] * height)
@@ -753,20 +704,12 @@ def write_results_to_csv(
                         (l_hip_px[1] + r_hip_px[1]) / 2.0,
                     )
                     torso_length = float(
-                        np.sqrt(
-                            (shoulder_mid[0] - hip_mid[0]) ** 2
-                            + (shoulder_mid[1] - hip_mid[1]) ** 2
-                        )
+                        np.sqrt((shoulder_mid[0] - hip_mid[0]) ** 2 + (shoulder_mid[1] - hip_mid[1]) ** 2)
                     )
 
                     if hip_detector.normalization_base != "shoulder":
                         # 肩幅も個別計算
-                        shoulder_width = float(
-                            np.sqrt(
-                                (l_sh_px[0] - r_sh_px[0]) ** 2
-                                + (l_sh_px[1] - r_sh_px[1]) ** 2
-                            )
-                        )
+                        shoulder_width = float(np.sqrt((l_sh_px[0] - r_sh_px[0]) ** 2 + (l_sh_px[1] - r_sh_px[1]) ** 2))
 
             except (IndexError, TypeError):
                 pass
@@ -784,17 +727,13 @@ def write_results_to_csv(
     csv_writer.writerow(row)
 
 
-def draw_posture_alerts(
-    frame, alerts: list[str], status: dict[str, Any], knee_alert: str | None
-):
+def draw_posture_alerts(frame, alerts: list[str], status: dict[str, Any], knee_alert: str | None):
     """フレームに前傾姿勢アラートと状態を描画"""
     y_offset = 30
 
     # アラート表示
     for alert in alerts:
-        cv2m.putText(
-            frame, alert, (10, y_offset), cv2m.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2
-        )
+        cv2m.putText(frame, alert, (10, y_offset), cv2m.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         y_offset += 30
 
     # 膝角度アラートの持続表示
@@ -828,9 +767,7 @@ def draw_posture_alerts(
         )
 
 
-def draw_hip_stay_info(
-    frame: np.ndarray, hip_detector: HipBasedStayDetector
-) -> np.ndarray:
+def draw_hip_stay_info(frame: np.ndarray, hip_detector: HipBasedStayDetector) -> np.ndarray:
     """腰の滞在情報を描画"""
     hip_status = hip_detector.get_current_status()
     hip_pos = hip_status["hip_position"]
@@ -928,18 +865,14 @@ def process_video(
             print(f"Processing video: {video_path}")
             print(f"Output CSV: {output_csv_path}")
             print(f"Output Video: {output_video_path}")
-            print(
-                f"Forward Leaning Monitor: {monitoring_duration}s, Threshold: {alert_threshold:.1%}"
-            )
+            print(f"Forward Leaning Monitor: {monitoring_duration}s, Threshold: {alert_threshold:.1%}")
             if hip_normalize:
                 print(
                     f"Hip-based Stay Detection: Move {hip_move_threshold} "
                     f"(normalized, base={hip_norm_base}), Stay {hip_stay_threshold}s"
                 )
             else:
-                print(
-                    f"Hip-based Stay Detection: Move {hip_move_threshold}px, Stay {hip_stay_threshold}s"
-                )
+                print(f"Hip-based Stay Detection: Move {hip_move_threshold}px, Stay {hip_stay_threshold}s")
 
             while cap.isOpened():
                 loop_start_time = time.perf_counter()
@@ -965,9 +898,7 @@ def process_video(
                     time_analyzing += time.perf_counter() - start_time
 
                     start_time = time.perf_counter()
-                    alerts = posture_monitor.update(
-                        timestamp, frame_count, analysis_results
-                    )
+                    alerts = posture_monitor.update(timestamp, frame_count, analysis_results)
                     hip_alert = hip_detector.update(landmarks, frame.shape, timestamp)
                     knee_alerts = knee_monitor.update(timestamp, analysis_results)
                     alerts.extend(knee_alerts)
@@ -1002,9 +933,7 @@ def process_video(
                     frame = draw_hip_stay_info(frame, hip_detector)
 
                 status = posture_monitor.get_status()
-                draw_posture_alerts(
-                    frame, alerts, status, knee_monitor.get_current_alert()
-                )
+                draw_posture_alerts(frame, alerts, status, knee_monitor.get_current_alert())
 
                 if hip_alert:
                     cv2m.putText(
@@ -1024,9 +953,7 @@ def process_video(
                     print(f"Frame {frame_count}: {hip_alert}")
 
                 video_writer.write(frame)
-                cv2m.imshow(
-                    "Integrated Analysis - Joint Movement & Hip Stay Detection", frame
-                )
+                cv2m.imshow("Integrated Analysis - Joint Movement & Hip Stay Detection", frame)
                 if cv2m.waitKey(1) & 0xFF == ord("q"):
                     break
 
@@ -1034,15 +961,9 @@ def process_video(
                 total_time_spent = time.perf_counter() - loop_start_time
 
                 if frame_count % 30 == 0:
-                    total_frames = int(
-                        cap.get(getattr(cv2m, "CAP_PROP_FRAME_COUNT", 7))
-                    )
-                    progress = (
-                        (frame_count / total_frames) * 100 if total_frames > 0 else 0
-                    )
-                    processing_fps = (
-                        1.0 / total_time_spent if total_time_spent > 0 else 0
-                    )
+                    total_frames = int(cap.get(getattr(cv2m, "CAP_PROP_FRAME_COUNT", 7)))
+                    progress = (frame_count / total_frames) * 100 if total_frames > 0 else 0
+                    processing_fps = 1.0 / total_time_spent if total_time_spent > 0 else 0
                     print(
                         f"Progress: {frame_count}/{total_frames} ({progress:.1f}%) | "
                         f"Processing FPS: {processing_fps:.1f}"
@@ -1057,34 +978,19 @@ def process_video(
     # パフォーマンス分析レポート
     print("\n--- Performance Analysis Report ---")
     print(f"Total frames processed: {frame_count}")
-    total_tracked_time = (
-        time_reading
-        + time_posing
-        + time_analyzing
-        + time_drawing
-        + time_writing
-        + time_monitoring
-    )
+    total_tracked_time = time_reading + time_posing + time_analyzing + time_drawing + time_writing + time_monitoring
     print(f"Total processing time: {total_tracked_time:.2f} seconds")
     if total_tracked_time > 0:
-        print(
-            f"Average FPS (including waitKey): {frame_count / total_tracked_time:.2f}"
-        )
+        print(f"Average FPS (including waitKey): {frame_count / total_tracked_time:.2f}")
     print("---------------------------------")
-    print(
-        f"Bottleneck Analysis (based on {total_tracked_time:.2f}s of tracked processing time):"
-    )
+    print(f"Bottleneck Analysis (based on {total_tracked_time:.2f}s of tracked processing time):")
     if total_tracked_time > 0:
-        print(
-            f"  - AI Pose Estimation:     {time_posing:.2f}s ({100 * time_posing / total_tracked_time:5.1f}%)"
-        )
+        print(f"  - AI Pose Estimation:     {time_posing:.2f}s ({100 * time_posing / total_tracked_time:5.1f}%)")
         print(
             f"  - OpenCV Operations:      {time_reading + time_drawing + time_writing:.2f}s "
             f"({100 * (time_reading + time_drawing + time_writing) / total_tracked_time:5.1f}%)"
         )
-        print(
-            f"  - Joint Analyzing:        {time_analyzing:.2f}s ({100 * time_analyzing / total_tracked_time:5.1f}%)"
-        )
+        print(f"  - Joint Analyzing:        {time_analyzing:.2f}s ({100 * time_analyzing / total_tracked_time:5.1f}%)")
         print(
             f"  - Posture & Hip Monitoring: {time_monitoring:.2f}s ({100 * time_monitoring / total_tracked_time:5.1f}%)"
         )
@@ -1109,9 +1015,7 @@ def process_video(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="統合版：関節動作分析 + 腰ベース長期滞在検知"
-    )
+    parser = argparse.ArgumentParser(description="統合版：関節動作分析 + 腰ベース長期滞在検知")
     parser.add_argument("--video", required=True, help="入力ビデオファイルのパス")
     parser.add_argument("--output-csv", help="出力CSVファイルのパス（オプション）")
     parser.add_argument("--output-video", help="出力ビデオファイルのパス（オプション）")
