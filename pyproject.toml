@@ -51,7 +51,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 # 最大行長
 line-length = 120
-extend-exclude = ["build", "dist", ".venv", "archive"]  # optional, context-aware
+extend-exclude = ["build", "dist", ".venv", "archive", "analysis"]  # optional, context-aware
 # 対象とする Python バージョン
 target-version = "py310"
 
