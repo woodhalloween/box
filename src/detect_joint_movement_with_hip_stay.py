@@ -310,35 +310,35 @@ class HipBasedStayDetector:
         try:
             height, width = frame_shape[:2]
 
-            # 左右の腰の位置を取得
             left_hip = landmarks[BodyPart.LEFT_HIP]
             right_hip = landmarks[BodyPart.RIGHT_HIP]
 
-            # 信頼度
             left_hip_confidence = left_hip[3]
             right_hip_confidence = right_hip[3]
 
             left_visible = left_hip_confidence >= self.confidence_threshold
             right_visible = right_hip_confidence >= self.confidence_threshold
 
-            # 正規化座標をピクセル座標に変換
             left_hip_px = (left_hip[0] * width, left_hip[1] * height)
             right_hip_px = (right_hip[0] * width, right_hip[1] * height)
 
             if left_visible and right_visible:
-                # 両方見える場合: 中心を計算
-                hip_center = ((left_hip_px[0] + right_hip_px[0]) / 2, (left_hip_px[1] + right_hip_px[1]) / 2)
+                # 両方見える場合
+                hip_center = (
+                    (left_hip_px[0] + right_hip_px[0]) / 2,
+                    (left_hip_px[1] + right_hip_px[1]) / 2,
+                )
                 avg_confidence = (left_hip_confidence + right_hip_confidence) / 2
                 return hip_center[0], hip_center[1], avg_confidence
-            elif left_visible:
+            if left_visible:
                 # 左のみ見える場合
                 return left_hip_px[0], left_hip_px[1], left_hip_confidence
-            elif right_visible:
+            if right_visible:
                 # 右のみ見える場合
                 return right_hip_px[0], right_hip_px[1], right_hip_confidence
-            else:
-                # どちらも見えない
-                return None
+
+            # どちらの腰も見えない場合
+            return None
 
         except (IndexError, TypeError):
             return None

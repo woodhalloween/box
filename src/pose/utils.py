@@ -9,8 +9,7 @@ def calculate_angle(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> float:
     v2 = p3 - p2
     cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     cos_theta = np.clip(cos_theta, -1.0, 1.0)
-    angle = np.degrees(np.arccos(cos_theta))
-    return angle
+    return np.degrees(np.arccos(cos_theta))
 
 
 def calculate_midpoint(p1: np.ndarray, p2: np.ndarray) -> np.ndarray:
