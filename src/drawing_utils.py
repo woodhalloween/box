@@ -7,7 +7,7 @@ import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 from PIL import Image, ImageDraw, ImageFont
 
-from src.definitions import Angle, MovementState
+from .definitions import Angle, MovementState
 
 CONNECTIONS = [
     (PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER),
@@ -36,6 +36,7 @@ ANGLE_JP = {
     Angle.LEFT_KNEE: "左膝",
     Angle.BODY_TILT: "体幹の傾き",
     Angle.NECK_TRUNK_ANGLE: "頸部-体幹角度",
+    Angle.LATERAL_TILT: "体幹の側屈",
 }
 
 MOVEMENT_STATE_JP = {
@@ -47,6 +48,8 @@ MOVEMENT_STATE_JP = {
     MovementState.UPRIGHT: "直立",
     MovementState.HUNCH: "猫背",
     MovementState.STRAIGHT: "直立（姿勢）",
+    MovementState.LEFT_TILT: "左側屈",
+    MovementState.RIGHT_TILT: "右側屈",
 }
 # --- ここまで ---
 
@@ -180,5 +183,33 @@ def draw_analysis_results(
 
         # 肩の中心から鼻への線 (黄色)
         cv2.line(img_with_text, p_shoulder_mid, p_nose_pos, (0, 255, 255), 2)
+
+    # --- デバッグ用の描画: 側屈（肩線・腰線の傾斜） ---
+    if Angle.LATERAL_TILT in results and landmarks is not None:
+        p_left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
+        p_right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
+        p_left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
+        p_right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
+
+        ls = (
+            int(p_left_shoulder[0] * w),
+            int(p_left_shoulder[1] * h),
+        )
+        rs = (
+            int(p_right_shoulder[0] * w),
+            int(p_right_shoulder[1] * h),
+        )
+        lh = (
+            int(p_left_hip[0] * w),
+            int(p_left_hip[1] * h),
+        )
+        rh = (
+            int(p_right_hip[0] * w),
+            int(p_right_hip[1] * h),
+        )
+
+        # 肩線（紫）と腰線（シアン）を描画
+        cv2.line(img_with_text, ls, rs, (128, 0, 128), 2)
+        cv2.line(img_with_text, lh, rh, (255, 255, 0), 2)
 
     return img_with_text

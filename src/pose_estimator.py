@@ -25,8 +25,7 @@ class PoseEstimator:
         if not results.pose_landmarks:
             return None
 
-        landmarks = np.array([[lm.x, lm.y, lm.z, lm.visibility] for lm in results.pose_landmarks.landmark])
-        return landmarks
+        return np.array([[lm.x, lm.y, lm.z, lm.visibility] for lm in results.pose_landmarks.landmark])
 
     def close(self):
         self.pose.close()

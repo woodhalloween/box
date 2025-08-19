@@ -4,7 +4,7 @@ import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 
 from src.definitions import Angle, MovementState
-from src.utils import calculate_angle, calculate_midpoint
+from src.pose.utils import calculate_angle, calculate_midpoint
 
 
 class MovementAnalyzer:
@@ -135,5 +135,35 @@ class MovementAnalyzer:
             "state": neck_state,
         }
         # --- ここまで ---
+
+        # --- 側屈（LATERAL_TILT）計算 ---
+        # 肩線と腰線の傾斜（画面座標のx,yを使用）
+        # ランドマークは正規化座標 [x, y, z, visibility]
+        shoulder_dx = float(p_right_shoulder[0] - p_left_shoulder[0])
+        shoulder_dy = float(p_right_shoulder[1] - p_left_shoulder[1])
+        hip_dx = float(p_right_hip[0] - p_left_hip[0])
+        hip_dy = float(p_right_hip[1] - p_left_hip[1])
+
+        # arctan2で各線分の傾き（ラジアン）を求め、平均を側屈傾斜とする
+        shoulder_slope = float(np.arctan2(shoulder_dy, shoulder_dx))
+        hip_slope = float(np.arctan2(hip_dy, hip_dx))
+        lateral_rad = (shoulder_slope + hip_slope) / 2.0
+        lateral_deg = abs(float(np.degrees(lateral_rad)))
+
+        # 閾値（度）。この値以上で側屈として扱う
+        lateral_threshold_deg = 10.0
+
+        if lateral_rad > 0 and lateral_deg >= lateral_threshold_deg:
+            lateral_state = MovementState.RIGHT_TILT
+        elif lateral_rad < 0 and lateral_deg >= lateral_threshold_deg:
+            lateral_state = MovementState.LEFT_TILT
+        else:
+            lateral_state = MovementState.UPRIGHT
+
+        analysis_results[Angle.LATERAL_TILT] = {
+            "angle": lateral_deg,
+            "state": lateral_state,
+        }
+        # --- 側屈 計算 ここまで ---
 
         return analysis_results
