@@ -765,7 +765,8 @@ def process_video(
     video_path: str,
     output_csv_path: str | None,
     output_video_path: str | None,
-    disable_japanese: bool,
+    output_dir: str = "analysis_results",
+    disable_japanese: bool = False,
     monitoring_duration: float = 60.0,
     alert_threshold: float = 0.7,
     hip_move_threshold: float = 25.0,
@@ -973,6 +974,7 @@ def main():
     parser.add_argument("--video", required=True, help="入力ビデオファイルのパス")
     parser.add_argument("--output-csv", help="出力CSVファイルのパス（オプション）")
     parser.add_argument("--output-video", help="出力ビデオファイルのパス（オプション）")
+    parser.add_argument("--output-dir", default="analysis_results", help="分析結果の出力先ディレクトリ（デフォルト: analysis_results）")
     parser.add_argument("--disable-japanese", action="store_true", help="日本語テキストの描画を無効にする")
     parser.add_argument(
         "--monitoring-duration", type=float, default=60.0, help="前傾姿勢監視期間（秒、デフォルト：60）"
@@ -1004,6 +1006,7 @@ def main():
         video_path=args.video,
         output_csv_path=args.output_csv,
         output_video_path=args.output_video,
+        output_dir=args.output_dir,
         disable_japanese=args.disable_japanese,
         monitoring_duration=args.monitoring_duration,
         alert_threshold=args.alert_threshold,
