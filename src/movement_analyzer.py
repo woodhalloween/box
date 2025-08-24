@@ -3,12 +3,12 @@ from __future__ import annotations
 import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 
-from src.definitions import Angle, MovementState
-from src.pose.utils import calculate_angle, calculate_midpoint
+from .definitions import Angle, MovementState
+from .pose.utils import calculate_angle, calculate_midpoint
 
 
 class MovementAnalyzer:
-    """関節の角度と動きの状態を分析するクラス"""
+    """mediapipeのlandmarksから関節の角度や動きの状態を分析する"""
 
     ANGLE_DEFINITIONS: dict[Angle, tuple[PoseLandmark, PoseLandmark, PoseLandmark]] = {
         Angle.RIGHT_ELBOW: (
