@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import cv2
-import mediapipe as mp
 import numpy as np
+from mediapipe.python.solutions import pose
 
 
 class PoseEstimator:
     """MediaPipe Poseを使用して姿勢を推定するクラス"""
 
     def __init__(self, model_complexity: int = 1, device: str = "cpu"):
-        self.pose = mp.solutions.pose.Pose(
+        self.pose = pose.Pose(
             model_complexity=model_complexity,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,

@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
+import os
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,18 +17,19 @@ from typing import IO, Any
 
 import cv2
 import numpy as np
+from mediapipe.python.solutions.pose import PoseLandmark
 
 from .definitions import Angle, MovementState
 from .drawing_utils import draw_analysis_results, draw_landmarks
+from .head_shake_detector import HeadShakeDetector
 from .movement_analyzer import MovementAnalyzer
 from .pose.definitions import BodyPart
 from .pose_estimator import PoseEstimator
 
 print("--- デバッグ: detect_joint_movement_with_hip_stay.py の実行開始 ---")
-import datetime
 
 # OpenCVの型スタブがない環境での静的解析エラー回避用にAnyとして扱う
-cv2m: Any = cv2
+# cv2m: Any = cv2  <- この行を削除し、直接cv2を使用します
 
 
 @dataclass
@@ -162,8 +165,8 @@ class PostureMonitor:
         """アラート条件をチェック"""
         alerts = []
 
-        # クールダウン期間中はアラートしない
-        if current_time - self.last_alert_time < self.alert_cooldown:
+        # クールダウン期間中はアラートしない（ただし初回アラートは除く）
+        if self.last_alert_time > 0 and current_time - self.last_alert_time < self.alert_cooldown:
             return alerts
 
         # 監視期間に達していない場合はチェックしない
@@ -441,22 +444,39 @@ class HipBasedStayDetector:
 
 
 class KneeAngleMonitor:
-    """膝角度の秒毎中央値と5秒移動平均を監視し、閾値を下回ると通知する"""
+    """膝角度の秒毎中央値と5秒移動平均を監視し、閾値を下回ると通知する."""
 
-    def __init__(self, threshold_deg: float = 90.0, moving_window_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        threshold_deg: float = 90.0,
+        moving_window_seconds: int = 5,
+        confidence_threshold: float = 0.7,
+    ) -> None:
+        """
+        KneeAngleMonitorを初期化する.
+
+        Args:
+            threshold_deg: アラートを発する膝角度の閾値（度）.
+            moving_window_seconds: 移動平均を計算するためのウィンドウサイズ（秒）.
+            confidence_threshold: 角度計算の信頼度スコアの閾値.
+        """
         self.threshold_deg = threshold_deg
         self.moving_window_seconds = moving_window_seconds
+        self.confidence_threshold = confidence_threshold  # 信頼度の閾値を追加
         self.current_second: int | None = None
         self.current_left_values: list[float] = []
         self.current_right_values: list[float] = []
-        self.medians_history: deque[tuple[int, float, float]] = deque(maxlen=moving_window_seconds)
+        self.medians_history: deque[tuple[int, float | None, float | None]] = deque(maxlen=moving_window_seconds)
         self.current_alert_message: str | None = None
 
-    def _finalize_second(self, second: int) -> tuple[int, float, float] | None:
+    def _finalize_second(self, second: int) -> tuple[int, float | None, float | None] | None:
         if not self.current_left_values and not self.current_right_values:
+            # データがない場合は履歴に追加しない
             return None
-        left_med = float(np.median(self.current_left_values)) if self.current_left_values else 0.0
-        right_med = float(np.median(self.current_right_values)) if self.current_right_values else 0.0
+
+        left_med = float(np.median(self.current_left_values)) if self.current_left_values else None
+        right_med = float(np.median(self.current_right_values)) if self.current_right_values else None
+
         self.medians_history.append((second, left_med, right_med))
         self.current_left_values.clear()
         self.current_right_values.clear()
@@ -465,21 +485,41 @@ class KneeAngleMonitor:
     def _moving_average(self) -> tuple[float | None, float | None]:
         if not self.medians_history:
             return None, None
-        left_vals = [m[1] for m in self.medians_history]
-        right_vals = [m[2] for m in self.medians_history]
-        return float(np.mean(left_vals)), float(np.mean(right_vals))
+        # Noneをフィルタリングして平均を計算
+        left_vals = [m[1] for m in self.medians_history if m[1] is not None]
+        right_vals = [m[2] for m in self.medians_history if m[2] is not None]
+
+        left_ma = float(np.mean(left_vals)) if left_vals else None
+        right_ma = float(np.mean(right_vals)) if right_vals else None
+        return left_ma, right_ma
 
     def update(self, timestamp_s: float, analysis_results: dict[Angle, dict[str, Any]]) -> list[str]:
-        """各フレームで呼び出し。秒境界で集計を確定し、通知を返す。"""
+        """各フレームで呼び出し.秒境界で集計を確定し、通知を返す."""
         alerts: list[str] = []
         sec = int(timestamp_s)
 
         left_knee = analysis_results.get(Angle.LEFT_KNEE)
         right_knee = analysis_results.get(Angle.RIGHT_KNEE)
+
         if left_knee and "angle" in left_knee:
-            self.current_left_values.append(float(left_knee["angle"]))
+            # 左膝の信頼度をチェック
+            left_conf = min(
+                left_knee.get("p1_confidence", 0.0),
+                left_knee.get("p2_confidence", 0.0),
+                left_knee.get("p3_confidence", 0.0),
+            )
+            if left_conf >= self.confidence_threshold:
+                self.current_left_values.append(float(left_knee["angle"]))
+
         if right_knee and "angle" in right_knee:
-            self.current_right_values.append(float(right_knee["angle"]))
+            # 右膝の信頼度をチェック
+            right_conf = min(
+                right_knee.get("p1_confidence", 0.0),
+                right_knee.get("p2_confidence", 0.0),
+                right_knee.get("p3_confidence", 0.0),
+            )
+            if right_conf >= self.confidence_threshold:
+                self.current_right_values.append(float(right_knee["angle"]))
 
         if self.current_second is None:
             self.current_second = sec
@@ -536,16 +576,32 @@ def setup_csv_writer(csv_file: IO):
         "right_knee_state",
         "left_knee_angle",
         "left_knee_state",
+        "right_knee_hip_confidence",
+        "right_knee_knee_confidence",
+        "right_knee_ankle_confidence",
+        "left_knee_hip_confidence",
+        "left_knee_knee_confidence",
+        "left_knee_ankle_confidence",
         "body_tilt_angle",
         "neck_trunk_angle_angle",
         "neck_trunk_angle_state",
         "body_tilt_state",
         "lateral_tilt_angle",
         "lateral_tilt_state",
+        # 首振り関連のフィールド
+        "head_horizontal_rotation_angle",
+        "head_horizontal_rotation_state",
+        "head_vertical_nod_angle",
+        "head_vertical_nod_state",
+        "head_shake_horizontal_detected",
+        "head_shake_vertical_detected",
+        "head_shake_alerts",
+        # 姿勢監視フィールド
         "is_forward_leaning",
         "forward_lean_score",
         "forward_lean_ratio",
         "avg_forward_lean_score",
+        # 腰滞在検知フィールド
         "hip_center_x",
         "hip_center_y",
         "stay_duration",
@@ -553,12 +609,21 @@ def setup_csv_writer(csv_file: IO):
         "is_long_stay",
         "long_stay_alert",
         "hip_detector_state",
+        # 正規化パラメータフィールド
         "torso_length",
         "shoulder_width",
         "person_scale",
         "normalization_base",
         "normalization_applied",
     ]
+    # ---ランドマーク座標のフィールドを追加---
+    landmark_fieldnames = []
+    for landmark in PoseLandmark:
+        name = landmark.name
+        landmark_fieldnames.extend([f"{name}_x", f"{name}_y", f"{name}_z", f"{name}_visibility"])
+    fieldnames.extend(landmark_fieldnames)
+    # ---ここまで---
+
     writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
     writer.writeheader()
     return writer
@@ -566,11 +631,11 @@ def setup_csv_writer(csv_file: IO):
 
 def setup_video_writer(cap: Any, output_path: str):
     """ビデオライターをセットアップする"""
-    fps = int(cap.get(getattr(cv2m, "CAP_PROP_FPS", 5)))
-    width = int(cap.get(getattr(cv2m, "CAP_PROP_FRAME_WIDTH", 3)))
-    height = int(cap.get(getattr(cv2m, "CAP_PROP_FRAME_HEIGHT", 4)))
-    fourcc = cv2m.VideoWriter_fourcc(*"mp4v")
-    return cv2m.VideoWriter(output_path, fourcc, fps, (width, height))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    return cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
 
 def write_results_to_csv(
@@ -581,6 +646,8 @@ def write_results_to_csv(
     posture_monitor: PostureMonitor,
     hip_detector: HipBasedStayDetector,
     hip_alert: str | None,
+    head_shake_detector: HeadShakeDetector | None = None,
+    head_shake_alerts: list[str] | None = None,
     landmarks: np.ndarray | None = None,
     frame_shape: tuple | None = None,
 ):
@@ -596,6 +663,17 @@ def write_results_to_csv(
         else:
             row[f"{angle_name}_angle"] = 0
             row[f"{angle_name}_state"] = MovementState.STATIC.name
+
+    # 膝関節の信頼度を追加
+    rk_result = analysis_results.get(Angle.RIGHT_KNEE, {})
+    row["right_knee_hip_confidence"] = rk_result.get("p1_confidence", 0.0)
+    row["right_knee_knee_confidence"] = rk_result.get("p2_confidence", 0.0)
+    row["right_knee_ankle_confidence"] = rk_result.get("p3_confidence", 0.0)
+
+    lk_result = analysis_results.get(Angle.LEFT_KNEE, {})
+    row["left_knee_hip_confidence"] = lk_result.get("p1_confidence", 0.0)
+    row["left_knee_knee_confidence"] = lk_result.get("p2_confidence", 0.0)
+    row["left_knee_ankle_confidence"] = lk_result.get("p3_confidence", 0.0)
 
     posture_stats = posture_monitor.get_status()
     is_forward_leaning, forward_lean_score = False, 0.0
@@ -626,6 +704,16 @@ def write_results_to_csv(
         }
     )
 
+    # 首振りデータ
+    head_shake_status = head_shake_detector.get_status() if head_shake_detector else {}
+    row.update(
+        {
+            "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC") != "HEAD_STATIC",
+            "head_shake_vertical_detected": head_shake_status.get("vertical_state", "HEAD_STATIC") != "HEAD_STATIC",
+            "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
+        }
+    )
+
     torso_length, shoulder_width, person_scale = 0.0, 0.0, 0.0
     if landmarks is not None and frame_shape is not None:
         # NOTE: Using protected method for simplicity in this script
@@ -645,25 +733,54 @@ def write_results_to_csv(
             "normalization_applied": hip_detector.use_normalization,
         }
     )
+
+    # --- ランドマーク座標を書き込む ---
+    if landmarks is not None:
+        for landmark in PoseLandmark:
+            name = landmark.name
+            idx = landmark.value
+            row[f"{name}_x"] = landmarks[idx][0]
+            row[f"{name}_y"] = landmarks[idx][1]
+            row[f"{name}_z"] = landmarks[idx][2]
+            row[f"{name}_visibility"] = landmarks[idx][3]
+    else:
+        # ランドマークがない場合は空欄（または0）で埋める
+        for landmark in PoseLandmark:
+            name = landmark.name
+            row[f"{name}_x"] = 0.0
+            row[f"{name}_y"] = 0.0
+            row[f"{name}_z"] = 0.0
+            row[f"{name}_visibility"] = 0.0
+    # --- ここまで ---
+
     csv_writer.writerow(row)
 
 
-def draw_posture_alerts(frame, alerts: list[str], status: dict[str, Any], knee_alert: str | None):
+def draw_posture_alerts(
+    frame, alerts: list[str], status: dict[str, Any], knee_alert: str | None, head_shake_alerts: list[str] | None = None
+):
     """フレームに前傾姿勢アラートと状態を描画"""
     y_offset = 30
     for alert in alerts:
-        cv2m.putText(frame, alert, (10, y_offset), cv2m.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(frame, alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         y_offset += 30
     if knee_alert:
-        cv2m.putText(frame, knee_alert, (10, y_offset), cv2m.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(frame, knee_alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         y_offset += 30
+
+    # 首振りアラートの表示
+    if head_shake_alerts:
+        for head_alert in head_shake_alerts:
+            cv2.putText(frame, head_alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+            y_offset += 30
+
     if status["sample_count"] > 0:
         status_text = (
             f"Monitor: {status['monitoring_duration']:.1f}s | "
             f"Forward: {status['forward_ratio']:.1%} | "
             f"Score: {status['avg_score']:.2f}"
         )
-        cv2m.putText(frame, status_text, (10, frame.shape[0] - 20), cv2m.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+        cv2.putText(frame, status_text, (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
 
 def draw_hip_stay_info(frame: np.ndarray, hip_detector: HipBasedStayDetector) -> np.ndarray:
@@ -676,13 +793,66 @@ def draw_hip_stay_info(frame: np.ndarray, hip_detector: HipBasedStayDetector) ->
     center_x, center_y = int(hip_pos[0]), int(hip_pos[1])
     color = (0, 0, 255) if hip_status["is_long_stay"] else (0, 255, 0)
     thickness = 3 if hip_status["is_long_stay"] else 2
-    cv2m.circle(frame, (center_x, center_y), 8, color, thickness)
+    cv2.circle(frame, (center_x, center_y), 8, color, thickness)
 
     state_text = hip_status["state"]
     stay_duration = hip_status["stay_duration"]
     confidence = hip_status["confidence"]
     text = f"{state_text}: {stay_duration:.1f}s (Conf:{confidence:.2f})"
-    cv2m.putText(frame, text, (center_x + 15, center_y - 10), cv2m.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    cv2.putText(frame, text, (center_x + 15, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    return frame
+
+
+def draw_head_shake_info(
+    frame: np.ndarray, head_shake_detector: HeadShakeDetector | None, landmarks: np.ndarray | None
+) -> np.ndarray:
+    """首振り情報を描画"""
+    if head_shake_detector is None or landmarks is None:
+        return frame
+
+    try:
+        # 鼻の位置を取得
+        nose = landmarks[BodyPart.NOSE]
+        if nose[3] < 0.5:  # 信頼度が低い場合はスキップ
+            return frame
+
+        # 画面座標に変換
+        height, width = frame.shape[:2]
+        nose_x, nose_y = int(nose[0] * width), int(nose[1] * height)
+
+        # 首振り状態を取得
+        head_status = head_shake_detector.get_status()
+
+        # 水平状態に応じた色設定
+        horizontal_state = head_status.get("horizontal_state", "HEAD_STATIC")
+        if horizontal_state == "HORIZONTAL_SHAKE":
+            color = (0, 255, 255)  # 黄色（首振り検出）
+        elif horizontal_state == "HEAD_LEFT_TURN":
+            color = (255, 0, 0)  # 青色（左向き）
+        elif horizontal_state == "HEAD_RIGHT_TURN":
+            color = (0, 0, 255)  # 赤色（右向き）
+        else:
+            color = (0, 255, 0)  # 緑色（静止）
+
+        # 鼻の位置にマーカーを描画
+        cv2.circle(frame, (nose_x, nose_y), 6, color, 2)
+
+        # 角度情報を表示
+        h_angle = head_status.get("horizontal_angle", 0.0)
+        v_angle = head_status.get("vertical_angle", 0.0)
+
+        text = f"Head: H:{h_angle:.1f}° V:{v_angle:.1f}°"
+        cv2.putText(frame, text, (nose_x + 10, nose_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+        # 状態テキスト
+        state_text = f"H:{horizontal_state.replace('HEAD_', '').replace('_', ' ')}"
+        vertical_state = head_status.get("vertical_state", "HEAD_STATIC")
+        state_text += f" V:{vertical_state.replace('HEAD_', '').replace('_', ' ')}"
+        cv2.putText(frame, state_text, (nose_x + 10, nose_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+    except (IndexError, TypeError):
+        pass
+
     return frame
 
 
@@ -703,7 +873,7 @@ def process_video(
 ):
     """ビデオを処理し、関節の動きと滞在を分析して結果を出力する"""
     print(f"--- デバッグ: process_video開始, 対象: {video_path} ---")
-    cap = cv2m.VideoCapture(video_path)
+    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"--- デバッグ・エラー: ビデオファイルが開けません: {video_path} ---")
         return
@@ -734,7 +904,15 @@ def process_video(
                 stability_threshold_px=stability_threshold_px,
                 grace_period_sec=grace_period_sec,
             )
-            knee_monitor = KneeAngleMonitor(threshold_deg=90.0, moving_window_seconds=5)
+            knee_monitor = KneeAngleMonitor(
+                threshold_deg=90.0, moving_window_seconds=5, confidence_threshold=0.7
+            )  # 信頼度閾値を追加
+            head_shake_detector = HeadShakeDetector(
+                horizontal_threshold=15.0,
+                vertical_threshold=10.0,
+                cycle_detection_window=60,  # 2秒@30fps
+                min_oscillations=2,
+            )
 
             frame_count = 0
             print(f"Processing video: {video_path}")
@@ -752,12 +930,13 @@ def process_video(
                     print("--- DEBUG: Failed to read frame or end of video.")  # デバッグ出力
                     break
 
-                timestamp = cap.get(getattr(cv2m, "CAP_PROP_POS_MSEC", 0)) / 1000.0
+                timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                 if frame_count % 100 == 0:  # 100フレーム毎に出力
                     print(f"--- DEBUG: Processing frame {frame_count}, timestamp: {timestamp:.2f}s")
                 landmarks = pose_estimator.estimate(frame)
                 hip_alert = None
                 alerts = []
+                head_shake_alerts = []
                 analysis_results = {}
 
                 if landmarks is not None:
@@ -767,8 +946,18 @@ def process_video(
                     knee_alerts = knee_monitor.update(timestamp, analysis_results)
                     alerts.extend(knee_alerts)
 
+                    # 首振り検出
+                    head_shake_results = head_shake_detector.update(landmarks, timestamp, frame_count)
+                    analysis_results.update(head_shake_results)
+                    head_shake_alerts = head_shake_detector.check_alerts(timestamp)
+                    alerts.extend(head_shake_alerts)
+
                     if hip_alert:
                         print(f"Frame {frame_count}: {hip_alert}")
+
+                    if head_shake_alerts:
+                        for head_alert in head_shake_alerts:
+                            print(f"Frame {frame_count}: {head_alert}")
 
                     write_results_to_csv(
                         csv_writer,
@@ -778,6 +967,8 @@ def process_video(
                         posture_monitor,
                         hip_detector,
                         hip_alert,
+                        head_shake_detector,
+                        head_shake_alerts,
                         landmarks,
                         frame.shape,
                     )
@@ -790,30 +981,31 @@ def process_video(
                     )
                     draw_landmarks(frame, landmarks)
                     frame = draw_hip_stay_info(frame, hip_detector)
+                    frame = draw_head_shake_info(frame, head_shake_detector, landmarks)
 
                 status = posture_monitor.get_status()
-                draw_posture_alerts(frame, alerts, status, knee_monitor.get_current_alert())
+                draw_posture_alerts(frame, alerts, status, knee_monitor.get_current_alert(), head_shake_alerts)
                 if hip_alert:
-                    cv2m.putText(
+                    cv2.putText(
                         frame,
                         f"HIP ALERT: {hip_alert}",
                         (10, frame.shape[0] - 40),
-                        cv2m.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         0.8,
                         (0, 255, 255),
                         2,
                     )
 
                 video_writer.write(frame)
-                cv2m.imshow("Integrated Analysis", frame)
-                if cv2m.waitKey(1) & 0xFF == ord("q"):
+                cv2.imshow("Integrated Analysis", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
                 frame_count += 1
     finally:
         cap.release()
         if video_writer:
             video_writer.release()
-        cv2m.destroyAllWindows()
+        cv2.destroyAllWindows()
 
 
 def main():
@@ -847,15 +1039,23 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     video_basename = f"{os.path.splitext(os.path.basename(args.video))[0]}_integrated"
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_video_path = os.path.join(output_dir, f"{video_basename}_output_{timestamp}.mp4")
     output_csv_path = os.path.join(output_dir, f"{video_basename}_analysis_{timestamp}.csv")
 
     process_video(
-        args.video,
-        output_video_path,
-        output_csv_path,
-        args,
+        video_path=args.video,
+        output_csv_path=output_csv_path,
+        output_video_path=output_video_path,
+        disable_japanese=False,
+        monitoring_duration=60.0,
+        alert_threshold=0.7,
+        hip_stay_threshold=60.0,
+        hip_normalize=args.hip_normalize,
+        hip_norm_base="torso",
+        spike_threshold=args.spike_threshold,
+        stability_threshold_px=args.stability_threshold,
+        grace_period_sec=args.grace_period,
     )
 
 

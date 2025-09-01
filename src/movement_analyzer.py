@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 
@@ -81,7 +83,13 @@ class MovementAnalyzer:
             else:
                 state = MovementState.STATIC
 
-            analysis_results[angle_name] = {"angle": angle, "state": state}
+            analysis_results[angle_name] = {
+                "angle": angle,
+                "state": state,
+                "p1_confidence": float(p1[3]),
+                "p2_confidence": float(p2[3]),
+                "p3_confidence": float(p3[3]),
+            }
             self.previous_angles[angle_name] = angle
 
         # 体幹の傾き計算
@@ -166,4 +174,87 @@ class MovementAnalyzer:
         }
         # --- 側屈 計算 ここまで ---
 
+        # --- 首振り角度計算 ---
+        head_horizontal_angle, head_vertical_angle = self._calculate_head_angles(landmarks)
+
+        # 水平首振り（左右）
+        horizontal_state = MovementState.HEAD_STATIC
+        if abs(head_horizontal_angle) > 15.0:  # 15度閾値
+            if head_horizontal_angle > 0:
+                horizontal_state = MovementState.HEAD_RIGHT_TURN
+            else:
+                horizontal_state = MovementState.HEAD_LEFT_TURN
+
+        analysis_results[Angle.HEAD_HORIZONTAL_ROTATION] = {
+            "angle": head_horizontal_angle,
+            "state": horizontal_state,
+        }
+
+        # 垂直うなずき（上下）
+        vertical_state = MovementState.HEAD_STATIC
+        if abs(head_vertical_angle) > 10.0:  # 10度閾値
+            if head_vertical_angle > 0:
+                vertical_state = MovementState.HEAD_DOWN_NOD
+            else:
+                vertical_state = MovementState.HEAD_UP_NOD
+
+        analysis_results[Angle.HEAD_VERTICAL_NOD] = {
+            "angle": head_vertical_angle,
+            "state": vertical_state,
+        }
+        # --- 首振り角度計算 ここまで ---
+
         return analysis_results
+
+    def _calculate_head_angles(self, landmarks: np.ndarray) -> tuple[float, float]:
+        """
+        首の水平・垂直角度を計算
+
+        Returns:
+            (horizontal_angle, vertical_angle): 水平角度、垂直角度（度）
+        """
+        try:
+            # 鼻、左耳、右耳、肩の座標を取得
+            nose = landmarks[PoseLandmark.NOSE.value]
+            left_ear = landmarks[PoseLandmark.LEFT_EAR.value]
+            right_ear = landmarks[PoseLandmark.RIGHT_EAR.value]
+            left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
+            right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
+
+            # 水平角度計算（鼻と耳の関係）
+            ear_vector = np.array([right_ear[0] - left_ear[0], right_ear[1] - left_ear[1]])
+            ear_midpoint = np.array([(left_ear[0] + right_ear[0]) / 2, (left_ear[1] + right_ear[1]) / 2])
+            nose_vector = np.array([nose[0] - ear_midpoint[0], nose[1] - ear_midpoint[1]])
+
+            # 水平面での回転角度
+            horizontal_angle_rad = math.atan2(nose_vector[1], nose_vector[0]) - math.atan2(ear_vector[1], ear_vector[0])
+            horizontal_angle = math.degrees(horizontal_angle_rad)
+
+            # 角度を -180° ～ +180° の範囲に正規化
+            while horizontal_angle > 180:
+                horizontal_angle -= 360
+            while horizontal_angle < -180:
+                horizontal_angle += 360
+
+            # 垂直角度計算（鼻と肩の関係）
+            shoulder_midpoint = np.array(
+                [(left_shoulder[0] + right_shoulder[0]) / 2, (left_shoulder[1] + right_shoulder[1]) / 2]
+            )
+            nose_shoulder_vector = np.array([nose[0] - shoulder_midpoint[0], nose[1] - shoulder_midpoint[1]])
+            vertical_vector = np.array([0, -1])  # 上向きベクトル
+
+            vertical_angle_rad = math.atan2(nose_shoulder_vector[1], nose_shoulder_vector[0]) - math.atan2(
+                vertical_vector[1], vertical_vector[0]
+            )
+            vertical_angle = math.degrees(vertical_angle_rad)
+
+            # 角度を -180° ～ +180° の範囲に正規化
+            while vertical_angle > 180:
+                vertical_angle -= 360
+            while vertical_angle < -180:
+                vertical_angle += 360
+
+            return float(horizontal_angle), float(vertical_angle)
+
+        except (IndexError, TypeError, ZeroDivisionError):
+            return 0.0, 0.0
