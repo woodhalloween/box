@@ -179,9 +179,12 @@ class HeadShakeDetector:
             if values[i] > values[i - 1] and values[i] > values[i + 1]:
                 if abs(values[i]) > threshold:  # 閾値以上の極大値
                     peaks.append(i)
-            elif values[i] < values[i - 1] and values[i] < values[i + 1]:
-                if abs(values[i]) > threshold:  # 閾値以上の極小値
-                    valleys.append(i)
+            # 谷（極小値）を検出
+            elif values[i] < values[i - 1] and values[i] < values[i + 1] and abs(values[i]) > threshold:
+                valleys.append(i)
+
+        if not peaks or not valleys:
+            return False
 
         # 十分な数の極値があるかチェック
         total_extremes = len(peaks) + len(valleys)

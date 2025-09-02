@@ -1,5 +1,6 @@
 import argparse
 import os
+import subprocess
 import sys
 
 import cv2
@@ -117,23 +118,74 @@ def create_video_from_segments(video_path, output_path, segments):
         print(f"動画作成中にエラー: {e}", file=sys.stderr)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CSV分析に基づき、動画を移動区間と滞在区間に分割します。")
-    parser.add_argument("csv_path", help="分析用のCSVファイルパス")
-    parser.add_argument("video_path", help="元の動画ファイルパス")
-    parser.add_argument("move_output", help="移動区間を結合した動画の出力パス")
-    parser.add_argument("stay_output", help="滞在区間を結合した動画の出力パス")
+def main():
+    parser = argparse.ArgumentParser(description="CSVで定義されたセグメントに基づいて動画を切り抜きます。")
+    parser.add_argument("--video-path", type=str, required=True, help="入力動画ファイルのパス")
+    parser.add_argument("--csv-path", type=str, required=True, help="セグメント情報を含むCSVファイルのパス")
+    parser.add_argument("--output-dir", type=str, required=True, help="切り抜いた動画を保存するディレクトリ")
     args = parser.parse_args()
 
-    move_segments, stay_segments = analyze_and_find_segments(args.csv_path)
+    # 入力ファイルの存在チェック
+    if not os.path.exists(args.video_path):
+        print(f"Error: Video file not found at {args.video_path}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.exists(args.csv_path):
+        print(f"Error: CSV file not found at {args.csv_path}", file=sys.stderr)
+        sys.exit(1)
 
-    if move_segments is not None and stay_segments is not None:
-        if move_segments:
-            create_video_from_segments(args.video_path, args.move_output, move_segments)
-        else:
-            print("移動区間は見つかりませんでした。")
+    # 出力ディレクトリの作成
+    os.makedirs(args.output_dir, exist_ok=True)
 
-        if stay_segments:
-            create_video_from_segments(args.video_path, args.stay_output, stay_segments)
-        else:
-            print("滞在区間は見つかりませんでした。")
+    # CSVの読み込みとカラム検証
+    try:
+        df = pd.read_csv(args.csv_path)
+        required_columns = {"start_frame", "end_frame", "idea"}
+        if not required_columns.issubset(df.columns):
+            missing = required_columns - set(df.columns)
+            print(f"Error: CSV file is missing required columns: {missing}", file=sys.stderr)
+            sys.exit(1)
+    except Exception as e:
+        print(f"Error reading or parsing CSV file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # FPSを取得 (cv2を使用)
+    cap = cv2.VideoCapture(args.video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video file: {args.video_path}", file=sys.stderr)
+        sys.exit(1)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+
+    video_basename = os.path.splitext(os.path.basename(args.video_path))[0]
+
+    for index, row in df.iterrows():
+        idea = row["idea"]
+        start_frame = int(row["start_frame"])
+        end_frame = int(row["end_frame"])
+
+        idea_dir = os.path.join(args.output_dir, str(idea))
+        os.makedirs(idea_dir, exist_ok=True)
+
+        output_filename = f"{video_basename}_{start_frame}_{end_frame}.mp4"
+        output_path = os.path.join(idea_dir, output_filename)
+
+        print(f"Clipping segment for '{idea}' ({start_frame}-{end_frame}) -> {output_path}")
+
+        # ffmpegコマンドを構築して実行
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            args.video_path,
+            "-vf",
+            f"select='between(n,{start_frame},{end_frame})',setpts=PTS-STARTPTS",
+            "-an",  # 音声なし
+            output_path,
+        ]
+        subprocess.run(command, check=True, capture_output=True, text=True)
+
+    print("\nAll segments clipped successfully.")
+
+
+if __name__ == "__main__":
+    main()

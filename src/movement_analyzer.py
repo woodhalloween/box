@@ -191,17 +191,16 @@ class MovementAnalyzer:
         }
 
         # 垂直うなずき（上下）
-        vertical_state = MovementState.HEAD_STATIC
-        if abs(head_vertical_angle) > 10.0:  # 10度閾値
-            if head_vertical_angle > 0:
-                vertical_state = MovementState.HEAD_DOWN_NOD
-            else:
-                vertical_state = MovementState.HEAD_UP_NOD
+        if Angle.HEAD_VERTICAL_NOD in self.previous_angles:
+            head_vertical_angle = self._calculate_head_vertical_angle(landmarks)
+            vertical_state = MovementState.HEAD_STATIC
+            if abs(head_vertical_angle) > 10.0:  # 10度閾値
+                vertical_state = MovementState.HEAD_DOWN_NOD if head_vertical_angle > 0 else MovementState.HEAD_UP_NOD
 
-        analysis_results[Angle.HEAD_VERTICAL_NOD] = {
-            "angle": head_vertical_angle,
-            "state": vertical_state,
-        }
+            analysis_results[Angle.HEAD_VERTICAL_NOD] = {
+                "angle": head_vertical_angle,
+                "state": vertical_state,
+            }
         # --- 首振り角度計算 ここまで ---
 
         return analysis_results

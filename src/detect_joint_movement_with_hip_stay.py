@@ -17,7 +17,7 @@ from typing import IO, Any
 
 import cv2
 import numpy as np
-from mediapipe.python.solutions.pose import PoseLandmark
+from mediapipe.solutions.pose import PoseLandmark
 
 from .definitions import Angle, MovementState
 from .drawing_utils import draw_analysis_results, draw_landmarks
@@ -498,11 +498,21 @@ class KneeAngleMonitor:
         alerts: list[str] = []
         sec = int(timestamp_s)
 
+        # 最初のフレームで現在の秒を初期化
+        if self.current_second is None:
+            self.current_second = sec
+
+        finalized_median_info = None
+        # 秒が切り替わった時に、前の秒の結果を確定させる
+        if sec != self.current_second:
+            finalized_median_info = self._finalize_second(self.current_second)
+            self.current_second = sec
+
+        # 現在の秒のデータを蓄積
         left_knee = analysis_results.get(Angle.LEFT_KNEE)
         right_knee = analysis_results.get(Angle.RIGHT_KNEE)
 
         if left_knee and "angle" in left_knee:
-            # 左膝の信頼度をチェック
             left_conf = min(
                 left_knee.get("p1_confidence", 0.0),
                 left_knee.get("p2_confidence", 0.0),
@@ -512,7 +522,6 @@ class KneeAngleMonitor:
                 self.current_left_values.append(float(left_knee["angle"]))
 
         if right_knee and "angle" in right_knee:
-            # 右膝の信頼度をチェック
             right_conf = min(
                 right_knee.get("p1_confidence", 0.0),
                 right_knee.get("p2_confidence", 0.0),
@@ -521,37 +530,38 @@ class KneeAngleMonitor:
             if right_conf >= self.confidence_threshold:
                 self.current_right_values.append(float(right_knee["angle"]))
 
-        if self.current_second is None:
-            self.current_second = sec
-            return alerts
+        # 確定した前の秒の結果があれば、アラートをチェック
+        if finalized_median_info:
+            second, left_med, right_med = finalized_median_info
 
-        if sec != self.current_second:
-            finalized = self._finalize_second(self.current_second)
-            prev_second = self.current_second
-            self.current_second = sec
+            left_ma, right_ma = self._moving_average()
 
-            if finalized:
-                _, left_med, right_med = finalized
-                left_ma, right_ma = self._moving_average()
+            triggered = []
+            # 中央値が閾値を下回るかチェック
+            if (left_med is not None and left_med < self.threshold_deg) or (
+                right_med is not None and right_med < self.threshold_deg
+            ):
+                lm = f"{left_med:.1f}" if left_med is not None else "-"
+                rm = f"{right_med:.1f}" if right_med is not None else "-"
+                triggered.append(f"Median L:{lm} R:{rm}")
 
-                def below(x: float | None) -> bool:
-                    return x is not None and x < self.threshold_deg
+            # 移動平均が閾値を下回るかチェック
+            if (left_ma is not None and left_ma < self.threshold_deg) or (
+                right_ma is not None and right_ma < self.threshold_deg
+            ):
+                lma = f"{left_ma:.1f}" if left_ma is not None else "-"
+                rma = f"{right_ma:.1f}" if right_ma is not None else "-"
+                triggered.append(f"MA5 L:{lma} R:{rma}")
 
-                triggered: list[str] = []
-                if left_med < self.threshold_deg or right_med < self.threshold_deg:
-                    triggered.append(f"Median L:{left_med:.1f} R:{right_med:.1f}")
-                if below(left_ma) or below(right_ma):
-                    lm = f"{left_ma:.1f}" if left_ma is not None else "-"
-                    rm = f"{right_ma:.1f}" if right_ma is not None else "-"
-                    triggered.append(f"MA5 L:{lm} R:{rm}")
+            if triggered:
+                alert_msg = f"[!] Knee Angle Low ({second}s): " + " / ".join(triggered)
+                alerts.append(alert_msg)
+                self.current_alert_message = alert_msg
 
-                if triggered:
-                    self.current_alert_message = f"[!] Knee Angle Low: {prev_second}s | " + " / ".join(triggered)
-                    alerts.append(self.current_alert_message)
         return alerts
 
     def get_current_alert(self) -> str | None:
-        """現在表示中のアラートメッセージを取得"""
+        """現在表示中のアラートメッセージを取得."""
         return self.current_alert_message
 
 
@@ -905,7 +915,7 @@ def process_video(
                 grace_period_sec=grace_period_sec,
             )
             knee_monitor = KneeAngleMonitor(
-                threshold_deg=90.0, moving_window_seconds=5, confidence_threshold=0.7
+                threshold_deg=90.0, moving_window_seconds=5, confidence_threshold=0.8
             )  # 信頼度閾値を追加
             head_shake_detector = HeadShakeDetector(
                 horizontal_threshold=15.0,
