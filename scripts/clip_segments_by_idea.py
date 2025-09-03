@@ -148,17 +148,16 @@ def main():
         print(f"Error reading or parsing CSV file: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # FPSを取得 (cv2を使用)
-    cap = cv2.VideoCapture(args.video_path)
-    if not cap.isOpened():
-        print(f"Error: Could not open video file: {args.video_path}", file=sys.stderr)
-        sys.exit(1)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    cap.release()
+    # ffmpegコマンドで直接フレーム番号を扱うため、事前にfpsを取得する必要はない
+    # cap = cv2.VideoCapture(args.video_path)
+    # if not cap.isOpened():
+    #     print(f"Error: Could not open video file: {args.video_path}", file=sys.stderr)
+    #     sys.exit(1)
+    # cap.release()
 
     video_basename = os.path.splitext(os.path.basename(args.video_path))[0]
 
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         idea = row["idea"]
         start_frame = int(row["start_frame"])
         end_frame = int(row["end_frame"])

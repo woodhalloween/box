@@ -36,7 +36,7 @@ jobs:
           poetry --version
 
       - name: 📦 Install dependencies
-        run: poetry install --with dev
+        run: poetry install --with dev,tracking,head_pose
 
       - name: 🔍 Ruff lint
         run: poetry run ruff check .
@@ -70,7 +70,7 @@ jobs:
           poetry --version
 
       - name: 📦 Install dependencies
-        run: poetry install --with dev
+        run: poetry install --with dev,tracking,head_pose
 
       - name: 🧱 Install OpenCV system dependencies
         run: |
