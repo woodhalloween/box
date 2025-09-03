@@ -78,6 +78,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgl1
 
+      - name: 🕵️ List installed packages for debugging
+        run: poetry run pip list
+
       - name: 🧪 Collect test metadata (check import errors)
         run: |
           if [ -d "tests" ]; then
