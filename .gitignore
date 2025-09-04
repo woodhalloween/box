@@ -52,6 +52,9 @@ ENV/
 *.mov
 *.MP4
 
+# テスト用の動画ファイルはGit LFSで管理するため、ignore対象から除外する
+!tests/**/*.mp4
+
 # Log files
 logs/
 *.log

@@ -1031,6 +1031,12 @@ def main():
     )
     # --- New algorithm parameters ---
     parser.add_argument(
+        "--hip-stay-threshold",
+        type=float,
+        default=60.0,
+        help="「長期滞在」と判定する時間の閾値を秒単位で指定します。（デフォルト: 60.0）",
+    )
+    parser.add_argument(
         "--spike-threshold",
         type=float,
         default=1.5,
@@ -1060,7 +1066,7 @@ def main():
         disable_japanese=False,
         monitoring_duration=60.0,
         alert_threshold=0.7,
-        hip_stay_threshold=60.0,
+        hip_stay_threshold=args.hip_stay_threshold,
         hip_normalize=args.hip_normalize,
         hip_norm_base="torso",
         spike_threshold=args.spike_threshold,
