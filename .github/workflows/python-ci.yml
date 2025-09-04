@@ -9,11 +9,13 @@ on:
       - main
       - develop
       - 'feature/**'
+      - 'fix/**'
   pull_request:
     branches:
       - main
       - develop
       - 'feature/**'
+      - 'fix/**'
 
 jobs:
   lint:
