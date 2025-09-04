@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import IO, Any
 
 import cv2
+import mediapipe as mp
 import numpy as np
-from mediapipe.solutions.pose import PoseLandmark
 
 from .definitions import Angle, MovementState
 from .drawing_utils import draw_analysis_results, draw_landmarks
@@ -628,7 +628,7 @@ def setup_csv_writer(csv_file: IO):
     ]
     # ---ランドマーク座標のフィールドを追加---
     landmark_fieldnames = []
-    for landmark in PoseLandmark:
+    for landmark in mp.solutions.pose.PoseLandmark:
         name = landmark.name
         landmark_fieldnames.extend([f"{name}_x", f"{name}_y", f"{name}_z", f"{name}_visibility"])
     fieldnames.extend(landmark_fieldnames)
@@ -746,7 +746,7 @@ def write_results_to_csv(
 
     # --- ランドマーク座標を書き込む ---
     if landmarks is not None:
-        for landmark in PoseLandmark:
+        for landmark in mp.solutions.pose.PoseLandmark:
             name = landmark.name
             idx = landmark.value
             row[f"{name}_x"] = landmarks[idx][0]
@@ -755,7 +755,7 @@ def write_results_to_csv(
             row[f"{name}_visibility"] = landmarks[idx][3]
     else:
         # ランドマークがない場合は空欄（または0）で埋める
-        for landmark in PoseLandmark:
+        for landmark in mp.solutions.pose.PoseLandmark:
             name = landmark.name
             row[f"{name}_x"] = 0.0
             row[f"{name}_y"] = 0.0
