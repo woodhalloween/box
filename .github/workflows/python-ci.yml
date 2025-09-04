@@ -29,6 +29,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'poetry'
 
       - name: 📦 Install Poetry via curl
         run: |
@@ -38,6 +39,9 @@ jobs:
 
       - name: 📦 Install dependencies
         run: poetry install
+
+      - name: 🚑 Force install mediapipe with pip
+        run: poetry run pip install "mediapipe>=0.10.11,<0.11.0"
 
       - name: 🔍 Ruff lint
         run: poetry run ruff check .
@@ -63,6 +67,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'poetry'
 
       - name: 📦 Install Poetry via curl
         run: |
@@ -73,6 +78,9 @@ jobs:
       - name: 📦 Install dependencies
         run: poetry install
 
+      - name: 🚑 Force install mediapipe with pip
+        run: poetry run pip install "mediapipe>=0.10.11,<0.11.0"
+
       - name: 🧱 Install OpenCV system dependencies
         run: |
           sudo apt-get update
@@ -80,6 +88,9 @@ jobs:
 
       - name: 🕵️ List installed packages for debugging
         run: poetry run pip list
+
+      - name: 🧪 Verify mediapipe import
+        run: poetry run python -c "import mediapipe.solutions.pose"
 
       - name: 🧪 Collect test metadata (check import errors)
         run: |
