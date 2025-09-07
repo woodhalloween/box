@@ -154,6 +154,28 @@ class TestPostureMonitor(unittest.TestCase):
         self.assertTrue(final_alerts)
         self.assertIn("[!] Forward Leaning:", final_alerts[0])
 
+    def test_get_status(self):
+        """get_statusメソッドが正しい値を返すかテストする"""
+        # 初期状態
+        initial_status = self.monitor.get_status()
+        self.assertEqual(initial_status["sample_count"], 0)
+        self.assertEqual(initial_status["forward_ratio"], 0)
+
+        # データを3秒分追加 (2フレームが前傾)
+        self.monitor.update(0.0, 0, self._create_dummy_results(is_leaning=True))
+        self.monitor.update(1.0, 1, self._create_dummy_results(is_leaning=True))
+        self.monitor.update(2.0, 2, self._create_dummy_results(is_leaning=False))
+
+        status = self.monitor.get_status()
+        self.assertEqual(status["sample_count"], 3)
+        self.assertAlmostEqual(status["monitoring_duration"], 2.0)
+        self.assertAlmostEqual(status["forward_ratio"], 2 / 3)
+        # スコアを計算して検証 ( leaning_score > 0.5, upright_score < 0.5 )
+        _, leaning_score = self.monitor.is_forward_leaning_posture(self._create_dummy_results(is_leaning=True))
+        _, upright_score = self.monitor.is_forward_leaning_posture(self._create_dummy_results(is_leaning=False))
+        expected_avg_score = (leaning_score * 2 + upright_score) / 3
+        self.assertAlmostEqual(status["avg_score"], expected_avg_score)
+
 
 class TestHipBasedStayDetector(unittest.TestCase):
     """HipBasedStayDetectorクラスのテストスイート"""
@@ -197,6 +219,77 @@ class TestHipBasedStayDetector(unittest.TestCase):
         expected_y = 0.5 * self.frame_shape[0]
         self.assertAlmostEqual(hip_data[0], expected_x, places=4)
         self.assertAlmostEqual(hip_data[1], expected_y, places=4)
+
+    def test_compute_person_scale(self):
+        """_compute_person_scaleメソッドをテストする"""
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.7, torso_len_norm=0.2)
+        height, width, _ = self.frame_shape
+        expected_torso_len_px = 0.2 * height
+
+        # 1. Torso-based scaling
+        self.detector.normalization_base = "torso"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertAlmostEqual(scale, expected_torso_len_px, places=4)
+
+        # 2. Shoulder-based scaling
+        self.detector.normalization_base = "shoulder"
+        landmarks[BodyPart.LEFT_SHOULDER] = [0.4, 0.5, 0, 1]
+        landmarks[BodyPart.RIGHT_SHOULDER] = [0.6, 0.5, 0, 1]
+        expected_shoulder_width_px = 0.2 * width
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertAlmostEqual(scale, expected_shoulder_width_px, places=4)
+
+        # 3. Screen-based scaling
+        self.detector.normalization_base = "screen"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertEqual(scale, height)
+
+        # 4. Invisible landmarks
+        landmarks[BodyPart.LEFT_SHOULDER][3] = 0.1  # visibility < threshold
+        self.detector.normalization_base = "torso"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertIsNone(scale)
+
+    def test_movement_detection_by_stability(self):
+        """人物スケールの不安定性によって移動が検知されるかテストする"""
+        # 安定性閾値を低く、スパイク閾値を高く設定
+        self.detector.stability_threshold_px = 10.0
+        self.detector.spike_threshold = 999.0
+
+        # 1. 安定したスケールで初期化
+        landmarks_stable = self._create_dummy_landmarks(hip_y_norm=0.5, torso_len_norm=0.2)
+        self.detector.update(landmarks_stable, self.frame_shape, timestamp=0.0)
+
+        # 2. スケールを変動させる (位置は同じ)
+        for i in range(1, 5):
+            torso_len = 0.2 + (i % 2) * 0.1  # 0.3, 0.2, 0.3, 0.2 ...
+            landmarks_unstable = self._create_dummy_landmarks(hip_y_norm=0.5, torso_len_norm=torso_len)
+            self.detector.update(landmarks_unstable, self.frame_shape, timestamp=float(i))
+
+        # スケールの標準偏差が閾値を超え、POTENTIAL_MOVEに遷移するはず
+        self.assertEqual(self.detector.state, HipStayState.POTENTIAL_MOVE)
+
+    def test_get_current_status(self):
+        """get_current_statusメソッドが正しい値を返すかテストする"""
+        # 1. 初期状態
+        initial_status = self.detector.get_current_status()
+        self.assertIsNone(initial_status["hip_position"])
+        self.assertEqual(initial_status["stay_duration"], 0.0)
+        self.assertFalse(initial_status["is_long_stay"])
+        self.assertEqual(initial_status["state"], "STAYING")
+
+        # 2. 滞在開始後
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.5)
+        self.detector.update(landmarks, self.frame_shape, timestamp=1.0)
+        status_after_start = self.detector.get_current_status()
+        self.assertIsNotNone(status_after_start["hip_position"])
+        self.assertEqual(status_after_start["stay_duration"], 0.0)
+
+        # 3. 長時間滞在後
+        self.detector.update(landmarks, self.frame_shape, timestamp=6.0) # 5s threshold
+        status_long_stay = self.detector.get_current_status()
+        self.assertAlmostEqual(status_long_stay["stay_duration"], 5.0)
+        self.assertTrue(status_long_stay["is_long_stay"])
 
     def test_state_transition_stay_to_move(self):
         """STAYINGからPOTENTIAL_MOVEへの遷移をテストする"""
