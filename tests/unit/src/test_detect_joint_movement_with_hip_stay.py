@@ -286,7 +286,7 @@ class TestHipBasedStayDetector(unittest.TestCase):
         self.assertEqual(status_after_start["stay_duration"], 0.0)
 
         # 3. 長時間滞在後
-        self.detector.update(landmarks, self.frame_shape, timestamp=6.0) # 5s threshold
+        self.detector.update(landmarks, self.frame_shape, timestamp=6.0)  # 5s threshold
         status_long_stay = self.detector.get_current_status()
         self.assertAlmostEqual(status_long_stay["stay_duration"], 5.0)
         self.assertTrue(status_long_stay["is_long_stay"])
