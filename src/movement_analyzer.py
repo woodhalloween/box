@@ -55,9 +55,10 @@ class MovementAnalyzer:
         ),
     }
 
-    def __init__(self, angle_threshold: float = 5.0):
+    def __init__(self, angle_threshold: float = 5.0, confidence_threshold: float = 0.7):
         self.angle_threshold = angle_threshold
         self.previous_angles: dict[Angle, float] = {}
+        self.confidence_threshold = confidence_threshold
 
     def analyze(self, landmarks: np.ndarray) -> dict[Angle, dict[str, float | MovementState]]:
         """ランドマークデータから各関節の角度と状態を分析する"""
@@ -68,6 +69,14 @@ class MovementAnalyzer:
             p1 = landmarks[points[0].value]
             p2 = landmarks[points[1].value]
             p3 = landmarks[points[2].value]
+
+            # 信頼度が閾値未満の場合はスキップ
+            if (
+                p1[3] < self.confidence_threshold
+                or p2[3] < self.confidence_threshold
+                or p3[3] < self.confidence_threshold
+            ):
+                continue
 
             angle = calculate_angle(p1, p2, p3)
             previous_angle = self.previous_angles.get(angle_name)
@@ -98,6 +107,14 @@ class MovementAnalyzer:
         p_left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
         p_right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
 
+        if (
+            p_left_shoulder[3] < self.confidence_threshold
+            or p_right_shoulder[3] < self.confidence_threshold
+            or p_left_hip[3] < self.confidence_threshold
+            or p_right_hip[3] < self.confidence_threshold
+        ):
+            return analysis_results  # 必要なキーポイントがなければ、ここで現在の結果を返す
+
         p_shoulder_mid = calculate_midpoint(p_left_shoulder, p_right_shoulder)
         p_hip_mid = calculate_midpoint(p_left_hip, p_right_hip)
 
@@ -121,6 +138,8 @@ class MovementAnalyzer:
 
         # --- 頸部-体幹角度（うつむき）計算 ---
         p_nose = landmarks[PoseLandmark.NOSE.value]
+        if p_nose[3] < self.confidence_threshold:
+            return analysis_results
 
         # 体幹の傾き計算で使った中心点を再利用
         # 3次元座標のみを使用
@@ -146,6 +165,8 @@ class MovementAnalyzer:
 
         # --- 側屈（LATERAL_TILT）計算 ---
         # 肩線と腰線の傾斜（画面座標のx,yを使用）
+        # 信頼度チェックはすでに行われているので不要
+
         # ランドマークは正規化座標 [x, y, z, visibility]
         shoulder_dx = float(p_right_shoulder[0] - p_left_shoulder[0])
         shoulder_dy = float(p_right_shoulder[1] - p_left_shoulder[1])

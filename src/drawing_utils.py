@@ -64,9 +64,11 @@ def draw_japanese_text(
 
     # macOSの標準的な日本語フォントを指定
     try:
+        # フォント指定を元に戻す
         font = ImageFont.truetype("Hiragino Sans GB.ttc", font_size)
     except OSError:
         # フォントが見つからない場合は、デフォルトフォントを使用（日本語は表示されない可能性）
+        print("警告: 日本語フォント 'Hiragino Sans GB.ttc' が見つかりません。デフォルトフォントを使用します。")
         font = ImageFont.load_default()
 
     draw.text(position, text, font=font, fill=color)
