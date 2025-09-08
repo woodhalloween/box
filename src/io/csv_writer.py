@@ -1,6 +1,7 @@
 """
 CSVの書き出しに関するヘルパー関数をまとめたモジュール。
 """
+
 from __future__ import annotations
 
 import csv
@@ -20,6 +21,7 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
     fieldnames = [
         "timestamp",
         "frame_number",
+        "debug_analysis_results_empty",  # デバッグ用の列を追加
         "right_elbow_angle",
         "right_elbow_state",
         "left_elbow_angle",
@@ -145,8 +147,7 @@ def write_results_to_csv(
     head_shake_status = head_shake_detector.get_status() if head_shake_detector else {}
     row.update(
         {
-            "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC")
-            != "HEAD_STATIC",
+            "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_vertical_detected": head_shake_status.get("vertical_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
         }

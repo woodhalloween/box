@@ -941,6 +941,10 @@ def process_video(
                     break
 
                 timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                if timestamp > 20.0:  # 20秒以上処理したらループを抜ける
+                    print("--- DEBUG: Reached 20 second limit for comparison. Exiting loop. ---")
+                    break
+
                 if frame_count % 100 == 0:  # 100フレーム毎に出力
                     print(f"--- DEBUG: Processing frame {frame_count}, timestamp: {timestamp:.2f}s")
                 landmarks = pose_estimator.estimate(frame)

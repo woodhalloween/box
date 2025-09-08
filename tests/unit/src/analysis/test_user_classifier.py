@@ -90,3 +90,61 @@ class TestUserClassifier(unittest.TestCase):
         self.monitor.update(0.1, self._create_dummy_results(120.0))
         alerts = self.monitor.update(1.1, self._create_dummy_results(120.0))
         self.assertFalse(alerts)
+
+    def test_standing_scenario(self):
+        """立位（安全な角度）が継続する場合、アラートが出ないことをテストする"""
+        for i in range(5):
+            alerts = self.monitor.update(float(i), self._create_dummy_results(160.0))
+            self.assertFalse(alerts)
+        final_alerts = self.monitor.update(5.1, self._create_dummy_results(160.0))
+        self.assertFalse(final_alerts)
+        self.assertIsNone(self.monitor.get_current_alert())
+
+    def test_sitting_scenario(self):
+        """座位（危険な角度）が継続する場合、アラートが出ることをテストする"""
+        # 0, 1秒とデータを投入。この時点ではMAを計算する十分なデータはない
+        self.monitor.update(0.1, self._create_dummy_results(80.0))
+        self.monitor.update(1.1, self._create_dummy_results(80.0))
+
+        # 2秒目のデータを投入し、3秒目のフレームで評価
+        # これにより、0, 1, 2秒の履歴 [80, 80, 80] ができ、MAが閾値を下回る
+        self.monitor.update(2.1, self._create_dummy_results(80.0))
+        alerts = self.monitor.update(3.1, self._create_dummy_results(80.0))
+
+        self.assertTrue(any("MA" in alert for alert in alerts))
+        self.assertIsNotNone(self.monitor.get_current_alert())
+
+    def test_stand_to_sit_scenario(self):
+        """立位から座位に移行するシナリオをテストする"""
+        # 0秒: 立位
+        self.monitor.update(0.1, self._create_dummy_results(160.0))
+        # 1, 2秒: 座位
+        self.monitor.update(1.1, self._create_dummy_results(80.0))
+        self.monitor.update(2.1, self._create_dummy_results(80.0))
+
+        # 3秒目のフレームで評価
+        # これにより、0, 1, 2秒の履歴 [160, 80, 80] ができ、MAが閾値 (90) を下回る
+        # (160+80+80)/3 = 106.6... なので、MAアラートは出ないはず
+        # 2秒目の中央値(80)によるアラートは出る
+        alerts = self.monitor.update(3.1, self._create_dummy_results(80.0))
+        self.assertTrue(any("Median" in alert for alert in alerts))
+        self.assertFalse(any("MA" in alert for alert in alerts))
+
+        # 4秒目のフレームで評価
+        # 履歴は [ (1, 80), (2, 80), (3, 80) ] となり、MAが閾値を下回る
+        alerts = self.monitor.update(4.1, self._create_dummy_results(80.0))
+        self.assertTrue(any("MA" in alert for alert in alerts))
+
+    def test_temporary_crouch_scenario(self):
+        """一時的にかがむが、すぐに立ち上がるシナリオ（誤検知しないこと）をテストする"""
+        # 0秒: 立位
+        self.monitor.update(0.1, self._create_dummy_results(160.0))
+        # 1秒: かがむ
+        self.monitor.update(1.1, self._create_dummy_results(80.0))
+        # 2秒: 立位に戻る
+        self.monitor.update(2.1, self._create_dummy_results(160.0))
+
+        # 3秒目のフレームで評価
+        # 履歴は [ (0, 160), (1, 80), (2, 160) ] となり、MA (133.3) は閾値を下回らない
+        alerts = self.monitor.update(3.1, self._create_dummy_results(160.0))
+        self.assertFalse(any("MA" in alert for alert in alerts))

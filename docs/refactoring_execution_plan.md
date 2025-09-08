@@ -71,16 +71,8 @@
 
 **Step 2.1: `UserClassifier` のロジック更新**
 - **作業内容**:
-    1. `UserClassifier` のロジックを「膝角度の移動平均が特定の閾値以下の場合に座位（車椅子利用者の可能性）と判定する」ように修正する。
-    2. `tests/unit/src/analysis/test_user_classifier.py` に、立位・座位・姿勢変化のシナリオを追加し、分類ロジックを徹底的にテストする。
+    1. `tests/unit/src/analysis/test_user_classifier.py` に、立位・座位・姿勢変化のシナリオを追加し、分類ロジックを徹底的にテストする。
 - **完了確認**: `test_user_classifier.py` のテストが全てパスすること。
-
-**Step 2.2: 通知システムの導入**
-- **作業内容**:
-    1. `src/notification/notifier.py` を作成し、通知を行うクラス（例: `StaffNotifier`）を定義する。
-    2. `main_processor.py` で、`UserClassifier` が座位と判定し、かつ `DwellTimeDetector` の滞在時間が閾値を超えた場合に `StaffNotifier` を呼び出すロジックを追加する。
-    3. 統合テストで `StaffNotifier` をモックし、正しい条件で通知メソッドが呼び出されることを検証する。
-- **完了確認**: `poetry run pytest` を実行し、全てのテストがパスすること。
 
 ---
 

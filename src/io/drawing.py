@@ -7,7 +7,10 @@ import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 from PIL import Image, ImageDraw, ImageFont
 
+from ..analysis.dwell_time_detector import DwellTimeDetector
+from ..analysis.user_classifier import UserClassifier
 from ..definitions import Angle, MovementState
+from ..head_shake_detector import HeadShakeDetector
 
 CONNECTIONS = [
     (PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER),
@@ -142,74 +145,35 @@ def draw_analysis_results(
             img_with_text = draw_japanese_text(img_with_text, text, (10, y_offset), 20, text_color)
         y_offset += 30
 
-    # --- デバッグ用の描画: 体幹の中心線と垂直線 ---
-    if Angle.BODY_TILT in results and landmarks is not None:
-        p_left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
-        p_right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
-        p_left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
-        p_right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
-
-        p_shoulder_mid = (
-            int(((p_left_shoulder[0] + p_right_shoulder[0]) / 2) * w),
-            int(((p_left_shoulder[1] + p_right_shoulder[1]) / 2) * h),
-        )
-        p_hip_mid = (
-            int(((p_left_hip[0] + p_right_hip[0]) / 2) * w),
-            int(((p_left_hip[1] + p_right_hip[1]) / 2) * h),
-        )
-
-        # 体幹の中心線 (緑)
-        cv2.line(img_with_text, p_hip_mid, p_shoulder_mid, (0, 255, 0), 2)
-        # 垂直線 (元の水色に戻す)
-        cv2.line(
-            img_with_text,
-            p_hip_mid,
-            (p_hip_mid[0], p_hip_mid[1] + 100),
-            (255, 0, 0),
-            2,
-        )
-
-    # --- デバッグ用の描画: うつむき検知線 ---
-    if Angle.NECK_TRUNK_ANGLE in results and landmarks is not None:
-        p_left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
-        p_right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
-        p_nose = landmarks[PoseLandmark.NOSE.value]
-
-        p_shoulder_mid = (
-            int(((p_left_shoulder[0] + p_right_shoulder[0]) / 2) * w),
-            int(((p_left_shoulder[1] + p_right_shoulder[1]) / 2) * h),
-        )
-        p_nose_pos = (int(p_nose[0] * w), int(p_nose[1] * h))
-
-        # 肩の中心から鼻への線 (黄色)
-        cv2.line(img_with_text, p_shoulder_mid, p_nose_pos, (0, 255, 255), 2)
-
-    # --- デバッグ用の描画: 側屈（肩線・腰線の傾斜） ---
-    if Angle.LATERAL_TILT in results and landmarks is not None:
-        p_left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
-        p_right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
-        p_left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
-        p_right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
-
-        ls = (
-            int(p_left_shoulder[0] * w),
-            int(p_left_shoulder[1] * h),
-        )
-        rs = (
-            int(p_right_shoulder[0] * w),
-            int(p_right_shoulder[1] * h),
-        )
-        lh = (
-            int(p_left_hip[0] * w),
-            int(p_left_hip[1] * h),
-        )
-        rh = (
-            int(p_right_hip[0] * w),
-            int(p_right_hip[1] * h),
-        )
-
-        # 肩線（紫）と腰線（シアン）を描画
-        cv2.line(img_with_text, ls, rs, (128, 0, 128), 2)
-        cv2.line(img_with_text, lh, rh, (255, 255, 0), 2)
-
     return img_with_text
+
+
+def draw_detection_info(
+    frame: np.ndarray,
+    user_classifier: UserClassifier,
+    dwell_time_detector: DwellTimeDetector,
+    head_shake_detector: HeadShakeDetector,
+    timestamp: float,
+):
+    """検知情報をフレームに描画する"""
+    y_offset = 30
+    user_alert = user_classifier.get_current_alert()
+    if user_alert:
+        cv2.putText(frame, user_alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        y_offset += 30
+
+    if head_shake_detector:
+        head_shake_alerts = head_shake_detector.check_alerts(timestamp)
+        for alert in head_shake_alerts:
+            cv2.putText(frame, alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+            y_offset += 30
+
+    dwell_status = dwell_time_detector.get_current_status()
+    if dwell_status["hip_position"]:
+        pos = (int(dwell_status["hip_position"][0]), int(dwell_status["hip_position"][1]))
+        duration = dwell_status["stay_duration"]
+        color = (0, 0, 255) if dwell_status["is_long_stay"] else (0, 255, 0)
+        cv2.circle(frame, pos, 8, color, -1)
+        cv2.putText(
+            frame, f"Stay: {duration:.1f}s", (pos[0] + 15, pos[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2
+        )
