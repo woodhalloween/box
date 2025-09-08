@@ -104,12 +104,12 @@ class TestMainDetector(unittest.TestCase):
         )
 
     @patch("src.main_detector.VideoProcessor")
-    def test_process_video_calls_videoprocessor(self, MockVideoProcessor):
+    def test_process_video_calls_videoprocessor(self, mock_video_processor):
         """
         Tests if the process_video function correctly initializes and runs VideoProcessor.
         """
         # Arrange
-        mock_processor_instance = MockVideoProcessor.return_value.__enter__.return_value
+        mock_processor_instance = mock_video_processor.return_value.__enter__.return_value
 
         # Act
         main_detector.process_video(
@@ -128,7 +128,7 @@ class TestMainDetector(unittest.TestCase):
         )
 
         # Assert
-        MockVideoProcessor.assert_called_once_with(
+        mock_video_processor.assert_called_once_with(
             video_path="test.mp4",
             output_csv_path="out.csv",
             output_video_path="out.mp4",
