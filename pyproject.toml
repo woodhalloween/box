@@ -99,8 +99,3 @@ exclude = [
 # インポートの整理に関する設定
 [tool.ruff.lint.isort]
 known-first-party = ["scripts", "src"]
-
-[tool.pytest.ini_options]
-pythonpath = [
-  "src"
-]
