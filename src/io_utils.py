@@ -1,6 +1,7 @@
 """
 CSVやビデオの入出力に関するヘルパー関数をまとめたモジュール。
 """
+
 from __future__ import annotations
 
 import csv
@@ -155,8 +156,7 @@ def write_results_to_csv(
     head_shake_status = head_shake_detector.get_status() if head_shake_detector else {}
     row.update(
         {
-            "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC")
-            != "HEAD_STATIC",
+            "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_vertical_detected": head_shake_status.get("vertical_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
         }
