@@ -70,7 +70,7 @@ class VideoProcessor:
 
         self._setup_paths()
         # --- ここでファイルを開く ---
-        self.csv_file = open(self.output_csv_path, "w", newline="", encoding="utf-8")
+        self.csv_file = open(self.output_csv_path, "w", newline="", encoding="utf-8")  # noqa: SIM115
         self._setup_modules()
         return self
 
