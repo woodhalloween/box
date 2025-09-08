@@ -8,9 +8,11 @@ from mediapipe.python.solutions.pose import PoseLandmark
 from PIL import Image, ImageDraw, ImageFont
 
 from ..analysis.dwell_time_detector import DwellTimeDetector
+from ..analysis.posture_monitor import PostureMonitor
 from ..analysis.user_classifier import UserClassifier
 from ..definitions import Angle, MovementState
 from ..head_shake_detector import HeadShakeDetector
+from ..pose.definitions import BodyPart
 
 CONNECTIONS = [
     (PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER),
@@ -78,7 +80,7 @@ def draw_japanese_text(
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
-def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> None:
+def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
     """骨格を描画する"""
     h, w, _ = image.shape
     for landmark in landmarks:
@@ -94,6 +96,7 @@ def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> None:
         )
         end_point = int(landmarks[end_idx][0] * w), int(landmarks[end_idx][1] * h)
         cv2.line(image, start_point, end_point, (255, 255, 255), 2)
+    return image
 
 
 def draw_analysis_results(
@@ -153,27 +156,82 @@ def draw_detection_info(
     user_classifier: UserClassifier,
     dwell_time_detector: DwellTimeDetector,
     head_shake_detector: HeadShakeDetector,
+    posture_monitor: PostureMonitor,
+    posture_alerts: list[str],
+    landmarks: np.ndarray | None,
     timestamp: float,
-):
-    """検知情報をフレームに描画する"""
+) -> np.ndarray:
+    """検知情報をフレームに描画する（統合版）"""
     y_offset = 30
+    # --- 上部にアラートを描画 ---
+    all_alerts: list[tuple[str, tuple[int, int, int]]] = []
+
+    # ユーザー分類/膝アラート
     user_alert = user_classifier.get_current_alert()
     if user_alert:
-        cv2.putText(frame, user_alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        y_offset += 30
+        all_alerts.append((user_alert, (0, 255, 255)))  # Yellow
 
+    # 姿勢アラート
+    all_alerts.extend([(alert, (0, 0, 255)) for alert in posture_alerts])  # Red
+
+    # 首振りアラート
     if head_shake_detector:
         head_shake_alerts = head_shake_detector.check_alerts(timestamp)
-        for alert in head_shake_alerts:
-            cv2.putText(frame, alert, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-            y_offset += 30
+        all_alerts.extend([(alert, (255, 0, 255)) for alert in head_shake_alerts])  # Magenta
 
+    for alert_text, color in all_alerts:
+        cv2.putText(frame, alert_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        y_offset += 30
+
+    # --- 滞在検知の情報を描画 ---
     dwell_status = dwell_time_detector.get_current_status()
     if dwell_status["hip_position"]:
         pos = (int(dwell_status["hip_position"][0]), int(dwell_status["hip_position"][1]))
-        duration = dwell_status["stay_duration"]
-        color = (0, 0, 255) if dwell_status["is_long_stay"] else (0, 255, 0)
+        duration = dwell_status.get("stay_duration", 0.0)
+        is_long_stay = dwell_status.get("is_long_stay", False)
+        state = dwell_status.get("state", "N/A")
+        confidence = dwell_status.get("confidence", 0.0)
+
+        color = (0, 0, 255) if is_long_stay else (0, 255, 0)
         cv2.circle(frame, pos, 8, color, -1)
-        cv2.putText(
-            frame, f"Stay: {duration:.1f}s", (pos[0] + 15, pos[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2
+        text = f"{state}: {duration:.1f}s (Conf:{confidence:.2f})"
+        cv2.putText(frame, text, (pos[0] + 15, pos[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    # --- 下部に姿勢監視のステータスを描画 ---
+    status = posture_monitor.get_status()
+    if status.get("sample_count", 0) > 0:
+        status_text = (
+            f"Monitor: {status.get('monitoring_duration', 0):.1f}s | "
+            f"Forward: {status.get('forward_ratio', 0):.1%} | "
+            f"Score: {status.get('avg_score', 0):.2f}"
         )
+        cv2.putText(frame, status_text, (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+    # --- 首振り情報を描画 (詳細版) ---
+    if head_shake_detector and landmarks is not None:
+        try:
+            nose = landmarks[BodyPart.NOSE.value]
+            if nose[3] > 0.5:  # 信頼度
+                height, width = frame.shape[:2]
+                nose_pos = (int(nose[0] * width), int(nose[1] * height))
+                head_status = head_shake_detector.get_status()
+
+                h_state = head_status.get("horizontal_state", "HEAD_STATIC")
+                color = (0, 255, 0)  # Green for static
+                if h_state == "HORIZONTAL_SHAKE":
+                    color = (0, 255, 255)  # Yellow
+                elif h_state == "HEAD_LEFT_TURN":
+                    color = (255, 0, 0)  # Blue
+                elif h_state == "HEAD_RIGHT_TURN":
+                    color = (0, 0, 255)  # Red
+
+                cv2.circle(frame, nose_pos, 8, color, 2)
+                h_angle = head_status.get("horizontal_angle", 0.0)
+                v_angle = head_status.get("vertical_angle", 0.0)
+                text = f"Head: H:{h_angle:.1f} V:{v_angle:.1f}"
+                cv2.putText(frame, text, (nose_pos[0] + 10, nose_pos[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+        except (IndexError, TypeError):
+            pass  # ランドマークがない場合は何もしない
+
+    return frame
