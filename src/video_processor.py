@@ -31,13 +31,30 @@ class VideoProcessor:
         output_video_path: str | None,
         disable_japanese: bool,
         stay_threshold_sec: float,
+        spike_threshold: float,
+        stability_threshold_px: float,
+        grace_period_sec: float,
+        pm_monitoring_duration_sec: float,
+        pm_alert_threshold_ratio: float,
+        uc_threshold_deg: float,
+        uc_moving_window_seconds: float,
     ):
         # --- 初期化では、後で使用するパラメータを保存するだけ ---
         self.video_path = video_path
         self.output_csv_path = output_csv_path
         self.output_video_path = output_video_path
         self.disable_japanese = disable_japanese
+        # DwellTimeDetector params
         self.stay_threshold_sec = stay_threshold_sec
+        self.spike_threshold = spike_threshold
+        self.stability_threshold_px = stability_threshold_px
+        self.grace_period_sec = grace_period_sec
+        # PostureMonitor params
+        self.pm_monitoring_duration_sec = pm_monitoring_duration_sec
+        self.pm_alert_threshold_ratio = pm_alert_threshold_ratio
+        # UserClassifier params
+        self.uc_threshold_deg = uc_threshold_deg
+        self.uc_moving_window_seconds = uc_moving_window_seconds
 
         # --- リソースは__enter__で初期化するため、ここではNoneに ---
         self.cap = None
@@ -90,9 +107,18 @@ class VideoProcessor:
 
         self.pose_estimator = PoseEstimator()
         self.analyzer = MovementAnalyzer()
-        self.user_classifier = UserClassifier(threshold_deg=100.0, moving_window_seconds=2)
-        self.dwell_time_detector = DwellTimeDetector(stay_threshold_sec=self.stay_threshold_sec)
-        self.posture_monitor = PostureMonitor()
+        self.user_classifier = UserClassifier(
+            threshold_deg=self.uc_threshold_deg, moving_window_seconds=self.uc_moving_window_seconds
+        )
+        self.dwell_time_detector = DwellTimeDetector(
+            stay_threshold_sec=self.stay_threshold_sec,
+            spike_threshold=self.spike_threshold,
+            stability_threshold_px=self.stability_threshold_px,
+            grace_period_sec=self.grace_period_sec,
+        )
+        self.posture_monitor = PostureMonitor(
+            monitoring_duration=self.pm_monitoring_duration_sec, alert_threshold=self.pm_alert_threshold_ratio
+        )
         self.head_shake_detector = HeadShakeDetector()
 
     def run(self):

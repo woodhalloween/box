@@ -16,6 +16,7 @@ python = ">=3.10,<3.12"
 # 🚧 pkg_resources used by boxmot; setuptools <81 needed until migrated
 setuptools = ">=78.1.1,<81.0.0"
 mediapipe = ">=0.10.11,<0.11.0"
+pyyaml = "^6.0.2"
 
 [tool.poetry.group.tracking.dependencies]
 boxmot = ">=12.0.1,<13.0.0"
