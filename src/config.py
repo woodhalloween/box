@@ -58,3 +58,7 @@ try:
 except FileNotFoundError as e:
     print(f"Warning: {e}. Using default values.")
     config = None
+
+# --- Hand Raise Detection ---
+HAND_RAISE_SECONDS_THRESHOLD = config.getfloat("hand_raise.seconds_threshold", 1.0)
+WRIST_SHOULDER_VERTICAL_THRESHOLD = config.getint("hand_raise.wrist_shoulder_vertical_threshold", -20)
