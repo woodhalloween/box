@@ -1,4 +1,5 @@
 """src/detect_joint_movement_with_hip_stay.pyのテスト"""
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -116,6 +117,38 @@ class TestPostureMonitor(unittest.TestCase):
         self.assertFalse(is_leaning)
         self.assertLess(score, 0.5)
 
+    def test_is_forward_leaning_posture_boundary(self):
+        """(No. 19) is_leaningのreturn部分の境界値テスト"""
+        # ケース1: スコアがちょうど0.5の場合 -> False
+        # body_tilt: 1 - 75/150 = 0.5
+        # neck_trunk: 1 - 75/150 = 0.5
+        # shoulder: 1/2 = 0.5
+        # avg_score = (0.5 + 0.5 + 0.5) / 3 = 0.5
+        results_equal = {
+            Angle.BODY_TILT: {"angle": 75.0},
+            Angle.NECK_TRUNK_ANGLE: {"angle": 75.0},
+            Angle.RIGHT_SHOULDER: {"state": MovementState.FLEXION},
+            Angle.LEFT_SHOULDER: {"state": MovementState.EXTENSION},
+        }
+        is_leaning, score = self.monitor.is_forward_leaning_posture(results_equal)
+        self.assertFalse(is_leaning, "Score of 0.5 should not be considered leaning")
+        self.assertAlmostEqual(score, 0.5)
+
+        # ケース2: スコアが0.5をわずかに超える場合 -> True
+        # body_tilt: 1 - 74/150 = 0.5066...
+        # neck_trunk: 1 - 75/150 = 0.5
+        # shoulder: 1/2 = 0.5
+        # avg_score = (0.5066 + 0.5 + 0.5) / 3 = 0.5022... > 0.5
+        results_greater = {
+            Angle.BODY_TILT: {"angle": 74.0},
+            Angle.NECK_TRUNK_ANGLE: {"angle": 75.0},
+            Angle.RIGHT_SHOULDER: {"state": MovementState.FLEXION},
+            Angle.LEFT_SHOULDER: {"state": MovementState.EXTENSION},
+        }
+        is_leaning, score = self.monitor.is_forward_leaning_posture(results_greater)
+        self.assertTrue(is_leaning, "Score > 0.5 should be considered leaning")
+        self.assertGreater(score, 0.5)
+
     def test_alert_triggering(self):
         """アラートが正しく発火するかテストする"""
         alerts = []
@@ -174,6 +207,12 @@ class TestPostureMonitor(unittest.TestCase):
         _, upright_score = self.monitor.is_forward_leaning_posture(self._create_dummy_results(is_leaning=False))
         expected_avg_score = (leaning_score * 2 + upright_score) / 3
         self.assertAlmostEqual(status["avg_score"], expected_avg_score)
+
+    def test_check_for_alerts_with_empty_history(self):
+        """(No. 20) posture_historyが空の場合に_check_for_alertsが早期リターンすることをテスト"""
+        self.monitor.posture_history.clear()
+        alerts = self.monitor._check_for_alerts(current_time=10.0)
+        self.assertEqual(len(alerts), 0)
 
 
 class TestHipBasedStayDetector(unittest.TestCase):
@@ -248,6 +287,21 @@ class TestHipBasedStayDetector(unittest.TestCase):
         self.detector.normalization_base = "torso"
         scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
         self.assertIsNone(scale)
+
+    def test_compute_person_scale_shoulders_not_visible(self):
+        """(No. 24) 肩が見えない場合にNoneを返すかテスト"""
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.7, torso_len_norm=0.2)
+        landmarks[BodyPart.LEFT_SHOULDER][3] = 0.1  # 左肩の信頼度を低くする
+
+        # ケース1: normalization_base = "shoulder"
+        self.detector.normalization_base = "shoulder"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertIsNone(scale, "Should return None if one shoulder is not visible for 'shoulder' base")
+
+        # ケース2: normalization_base = "torso"
+        self.detector.normalization_base = "torso"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertIsNone(scale, "Should return None if one shoulder is not visible for 'torso' base")
 
     def test_movement_detection_by_stability(self):
         """人物スケールの不安定性によって移動が検知されるかテストする"""
@@ -348,3 +402,68 @@ class TestHipBasedStayDetector(unittest.TestCase):
         self.assertIsNotNone(alert)
         self.assertIn("[!] Long Stay Detected", alert)
         self.assertTrue(self.detector.stay_info.notified)
+
+    def test_compute_person_scale_exceptions(self):
+        """(No. 23, 25) _compute_person_scaleの例外処理をテストする"""
+        # (No. 23) visible() 内の TypeError/ValueError
+        landmarks_bad_visibility = self._create_dummy_landmarks(hip_y_norm=0.5).astype(object)
+        landmarks_bad_visibility[BodyPart.LEFT_SHOULDER][3] = "invalid"
+        scale = self.detector._compute_person_scale(landmarks_bad_visibility, self.frame_shape)
+        self.assertIsNone(scale, "Should return None with invalid visibility")
+
+        # (No. 25) IndexError
+        landmarks_index_error = np.zeros((10, 4))  # Not enough landmarks
+        scale = self.detector._compute_person_scale(landmarks_index_error, self.frame_shape)
+        self.assertIsNone(scale, "Should handle IndexError")
+
+        # (No. 25) TypeError from None landmarks
+        landmarks_type_error_none = None
+        scale = self.detector._compute_person_scale(landmarks_type_error_none, self.frame_shape)
+        self.assertIsNone(scale, "Should handle TypeError when landmarks is None")
+
+
+class TestStandaloneFunctions(unittest.TestCase):
+    """モジュールレベルの独立した関数のテスト"""
+
+    def setUp(self):
+        self.frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    def test_draw_posture_alerts(self):
+        """(No. 26) draw_posture_alertsがクラッシュしないことをテスト"""
+        from src.detect_joint_movement_with_hip_stay import draw_posture_alerts
+
+        draw_posture_alerts(
+            self.frame,
+            alerts=["Test Alert"],
+            status={"sample_count": 1, "monitoring_duration": 1.0, "forward_ratio": 0.5, "avg_score": 0.6},
+            knee_alert="Knee Alert",
+            head_shake_alerts=["Head Shake Alert"],
+        )
+
+    def test_draw_hip_stay_info(self):
+        """(No. 27) draw_hip_stay_infoがクラッシュしないことをテスト"""
+        from src.detect_joint_movement_with_hip_stay import draw_hip_stay_info
+
+        detector = HipBasedStayDetector()
+        detector.stay_info = HipStayInfo(
+            last_hip_pos=(320, 240),
+            last_update_time=1.0,
+            stay_start_time=0.0,
+            stay_duration=1.0,
+            notified=False,
+            confidence_score=0.9,
+        )
+        draw_hip_stay_info(self.frame, detector)
+
+    def test_draw_head_shake_info(self):
+        """(No. 28) draw_head_shake_infoがクラッシュしないことをテスト"""
+        from src.detect_joint_movement_with_hip_stay import draw_head_shake_info
+        from src.head_shake_detector import HeadShakeDetector
+
+        detector = HeadShakeDetector()
+        landmarks = np.zeros((33, 4))
+        landmarks[BodyPart.NOSE] = [0.5, 0.5, 0, 0.9]  # visible nose
+        draw_head_shake_info(self.frame, detector, landmarks)
+        # detector or landmarksがNoneの場合もテスト
+        draw_head_shake_info(self.frame, None, landmarks)
+        draw_head_shake_info(self.frame, detector, None)
