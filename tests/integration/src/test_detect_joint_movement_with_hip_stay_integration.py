@@ -98,10 +98,10 @@ class TestProcessVideo(unittest.TestCase):
 
         # 各処理クラスのインスタンス化
         self.assertTrue(mock_pose_estimator.called)
-        self.assertTrue(mock_analyzer.called)
-        self.assertTrue(mock_posture_monitor.called)
-        self.assertTrue(mock_hip_detector.called)
-        self.assertTrue(mock_knee_monitor.called)
+        self.assertTrue(_mock_analyzer.called)
+        self.assertTrue(_mock_posture_monitor.called)
+        self.assertTrue(_mock_hip_detector.called)
+        self.assertTrue(_mock_knee_monitor.called)
         self.assertTrue(mock_head_detector.called)
 
         # ループ内の主要な処理 (2フレーム分呼ばれる)
