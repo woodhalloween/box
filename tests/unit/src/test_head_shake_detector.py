@@ -179,6 +179,19 @@ def test__analyze_horizontal_movement_oscillation(detector):
     assert state == MovementState.HORIZONTAL_SHAKE
 
 
+def test__analyze_horizontal_movement_requires_min_samples(detector):
+    """Guard clause: with <10 samples, horizontal analyzer must return HEAD_STATIC."""
+    thr = detector.horizontal_threshold
+    amplitude = thr + 20.0  # large enough that, without the guard, it would count as oscillation
+    # 5 samples only (< 10)
+    seq = [0.0, +amplitude, 0.0, -amplitude, 0.0]
+
+    _fill_history_for_angles(detector, horiz_values=seq, vert_values=[0.0] * len(seq))
+    assert len(detector.angle_history) < 10  # ensure we are exercising the guard path
+    state = detector._analyze_horizontal_movement()
+    assert state == MovementState.HEAD_STATIC
+
+
 # ------------------------------
 # _analyze_vertical_movement
 # ------------------------------
@@ -220,6 +233,19 @@ def test__analyze_vertical_movement_oscillation(detector):
     _fill_history_for_angles(detector, horiz_values=[0.0] * len(seq), vert_values=seq)
     state = detector._analyze_vertical_movement()
     assert state == MovementState.VERTICAL_NOD
+
+
+def test__analyze_vertical_movement_requires_min_samples(detector):
+    """Guard clause: with <10 samples, vertical analyzer must return HEAD_STATIC."""
+    thr = detector.vertical_threshold
+    amplitude = thr + 20.0  # large enough that, without the guard, it would count as nod oscillation
+    # 7 samples only (< 10)
+    seq = [0.0, +amplitude, 0.0, -amplitude, 0.0, +amplitude, 0.0]
+
+    _fill_history_for_angles(detector, horiz_values=[0.0] * len(seq), vert_values=seq)
+    assert len(detector.angle_history) < 10  # ensure we are exercising the guard path
+    state = detector._analyze_vertical_movement()
+    assert state == MovementState.HEAD_STATIC
 
 
 # ------------------------------
