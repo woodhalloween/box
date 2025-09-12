@@ -1,11 +1,60 @@
 """src/head_shake_detector.pyのテスト"""
 
+from math import isclose
+
 import numpy as np
 import pytest
+from mediapipe.python.solutions.pose import PoseLandmark
 
 from src.definitions import Angle, MovementState
 from src.head_shake_detector import HeadAngleSnapshot, HeadShakeDetector
 from src.pose.definitions import BodyPart
+
+
+def _mk_landmarks(nose_xy, left_ear_xy, right_ear_xy, left_sh_xy, right_sh_xy, conf=1.0):
+    """Build a minimal np.ndarray of landmarks with (x, y, z, conf) for required points only."""
+    # Indices used by _calculate_head_angles
+    idxs = [
+        PoseLandmark.NOSE.value,
+        PoseLandmark.LEFT_EAR.value,
+        PoseLandmark.RIGHT_EAR.value,
+        PoseLandmark.LEFT_SHOULDER.value,
+        PoseLandmark.RIGHT_SHOULDER.value,
+    ]
+    n = max(idxs) + 1
+    lm = np.zeros((n, 4), dtype=float)
+
+    lm[PoseLandmark.NOSE.value] = [nose_xy[0], nose_xy[1], 0.0, conf]
+    lm[PoseLandmark.LEFT_EAR.value] = [left_ear_xy[0], left_ear_xy[1], 0.0, conf]
+    lm[PoseLandmark.RIGHT_EAR.value] = [right_ear_xy[0], right_ear_xy[1], 0.0, conf]
+    lm[PoseLandmark.LEFT_SHOULDER.value] = [left_sh_xy[0], left_sh_xy[1], 0.0, conf]
+    lm[PoseLandmark.RIGHT_SHOULDER.value] = [right_sh_xy[0], right_sh_xy[1], 0.0, conf]
+    return lm
+
+
+def _fill_history_for_angles(detector, horiz_values, vert_values, conf=1.0, start_ts=0.0):
+    """Utility: populate angle_history with synthetic snapshots of given angles."""
+    detector.angle_history.clear()
+    detector.horizontal_angles.clear()
+    detector.vertical_angles.clear()
+    detector.timestamps.clear()
+
+    # Ensure same length for both sequences
+    n = max(len(horiz_values), len(vert_values))
+    for i in range(n):
+        h = horiz_values[i] if i < len(horiz_values) else 0.0
+        v = vert_values[i] if i < len(vert_values) else 0.0
+        snap = HeadAngleSnapshot(
+            timestamp=start_ts + i * 0.033,
+            frame_number=i,
+            horizontal_angle=h,
+            vertical_angle=v,
+            confidence=conf,
+        )
+        detector.angle_history.append(snap)
+        detector.horizontal_angles.append(h)
+        detector.vertical_angles.append(v)
+        detector.timestamps.append(start_ts + i * 0.033)
 
 
 @pytest.fixture
@@ -38,6 +87,15 @@ def test_detect_oscillation_pattern_positive(detector):
 def test_detect_oscillation_pattern_negative(detector):
     """振動がない場合に正しく検出されないことをテストする"""
     assert detector._detect_oscillation_pattern([5] * 20, threshold=20) is False
+
+
+def test__detect_oscillation_pattern_requires_min_data(detector):
+    """Guard clause: with fewer than min_oscillations*4 samples, oscillation detection must return False."""
+    # Only 6 samples (< 8 when min_oscillations == 2)
+    values = [0.0, 10.0, 0.0, -10.0, 0.0, 10.0]
+    assert len(values) < detector.min_oscillations * 4  # ensure we hit the guard path
+    ok = detector._detect_oscillation_pattern(values, threshold=detector.horizontal_threshold)
+    assert ok is False
 
 
 def test_update_static(detector, stable_landmarks):
@@ -101,32 +159,10 @@ def test_vertical_nod(detector, stable_landmarks):
     assert results[Angle.HEAD_VERTICAL_NOD]["state"] == MovementState.VERTICAL_NOD
 
 
-# --- Add below to the end of test_head_shake_detector.py ---
-
-
-def _fill_history_for_angles(detector, horiz_values, vert_values, conf=1.0, start_ts=0.0):
-    """Utility: populate angle_history with synthetic snapshots of given angles."""
-    detector.angle_history.clear()
-    detector.horizontal_angles.clear()
-    detector.vertical_angles.clear()
-    detector.timestamps.clear()
-
-    # Ensure same length for both sequences
-    n = max(len(horiz_values), len(vert_values))
-    for i in range(n):
-        h = horiz_values[i] if i < len(horiz_values) else 0.0
-        v = vert_values[i] if i < len(vert_values) else 0.0
-        snap = HeadAngleSnapshot(
-            timestamp=start_ts + i * 0.033,
-            frame_number=i,
-            horizontal_angle=h,
-            vertical_angle=v,
-            confidence=conf,
-        )
-        detector.angle_history.append(snap)
-        detector.horizontal_angles.append(h)
-        detector.vertical_angles.append(v)
-        detector.timestamps.append(start_ts + i * 0.033)
+def test_update_returns_empty_when_landmarks_none(detector):
+    """update must short-circuit to {} when landmarks is None."""
+    result = detector.update(None, timestamp=0.0, frame_number=0)
+    assert result == {}
 
 
 # ------------------------------
@@ -331,3 +367,67 @@ def test_get_status_when_filled(detector):
     assert status["vertical_angle"] == -25.0
     assert status["confidence"] == 0.85
     assert status["sample_count"] >= 4  # exact count depends on window, but >= 4 here
+
+
+# ------------------------------
+# _calculate_head_angles
+# ------------------------------
+def test__calculate_head_angles_exception_returns_zeros(detector):
+    """If internal indexing fails, _calculate_head_angles must return (0.0, 0.0, 0.0)."""
+    # Shape (0, 3) guarantees IndexError when the method tries to index required landmarks.
+    bad_landmarks = np.empty((0, 3), dtype=float)
+    yaw, pitch, conf = detector._calculate_head_angles(bad_landmarks)
+    assert (yaw, pitch, conf) == (0.0, 0.0, 0.0)
+
+
+def test__calculate_head_angles_sets_horizontal_zero_when_ear_dist_near_zero(detector):
+    """If left/right ear coincide (ear_dist < 1e-6), horizontal angle must be 0.0."""
+    # Ears at identical (x, y) -> ear_dist == 0; shoulders placed to avoid vertical guard.
+    landmarks = _mk_landmarks(
+        nose_xy=(0.7, 0.6),
+        left_ear_xy=(0.5, 0.4),
+        right_ear_xy=(0.5, 0.4),  # same as left ear -> ear_dist = 0
+        left_sh_xy=(0.4, 0.9),
+        right_sh_xy=(0.6, 0.9),
+        conf=1.0,
+    )
+    yaw, pitch, conf = detector._calculate_head_angles(landmarks)
+    assert isclose(conf, 1.0, rel_tol=1e-9)
+    assert isclose(yaw, 0.0, abs_tol=1e-9)  # branch: ear_dist < 1e-6
+    # pitch may be any value here; we only care that yaw is forced to 0.0.
+
+
+def test__calculate_head_angles_sets_vertical_zero_when_neck_length_near_zero(detector):
+    """If shoulder-mid y == ear-mid y (neck_length_approx < 1e-6), vertical angle must be 0.0."""
+    # Keep ears separated in x so horizontal is computable; set ears and shoulders at same y.
+    landmarks = _mk_landmarks(
+        nose_xy=(0.8, 0.5),
+        left_ear_xy=(0.4, 0.5),
+        right_ear_xy=(0.6, 0.5),
+        left_sh_xy=(0.3, 0.5),  # same y as ears -> neck_length_approx = 0
+        right_sh_xy=(0.7, 0.5),
+        conf=1.0,
+    )
+    yaw, pitch, conf = detector._calculate_head_angles(landmarks)
+    assert isclose(conf, 1.0, rel_tol=1e-9)
+    assert isclose(pitch, 0.0, abs_tol=1e-9)  # branch: neck_length_approx < 1e-6
+    # yaw can be non-zero; not asserted here.
+
+
+def test__calculate_head_angles_short_circuits_on_low_confidence(detector):
+    """If avg_confidence < confidence_threshold, method must return zeros with that avg_confidence."""
+    # All five required landmarks have low confidence (e.g., 0.2 < default 0.5).
+    low_conf = 0.2
+    landmarks = _mk_landmarks(
+        nose_xy=(0.5, 0.5),
+        left_ear_xy=(0.4, 0.5),
+        right_ear_xy=(0.6, 0.5),
+        left_sh_xy=(0.4, 0.8),
+        right_sh_xy=(0.6, 0.8),
+        conf=low_conf,
+    )
+    yaw, pitch, conf = detector._calculate_head_angles(landmarks)
+    assert isclose(yaw, 0.0, abs_tol=1e-9)
+    assert isclose(pitch, 0.0, abs_tol=1e-9)
+    # avg confidence should be 'low_conf' because all five used points share the same conf
+    assert isclose(conf, low_conf, rel_tol=1e-9)
