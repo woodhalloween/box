@@ -107,8 +107,9 @@ class HeadShakeDetector:
         self.previous_horizontal_angle: float | None = 0.0
         self.previous_vertical_angle: float | None = 0.0
 
-        self.last_horizontal_alert_time: float = 0
-        self.last_vertical_alert_time: float = 0
+        # Initialize to -inf so the very first detection is not blocked by cooldown.
+        self.last_horizontal_alert_time: float = float("-inf")
+        self.last_vertical_alert_time: float = float("-inf")
         self.alert_cooldown: float = 10.0  # アラート間隔（秒）
 
     def _calculate_head_angles(self, landmarks: np.ndarray) -> tuple[float, float, float]:
