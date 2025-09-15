@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 import numpy as np
+import pytest
 
 from src.video_processor import VideoProcessor
 
@@ -186,3 +189,120 @@ class TestVideoProcessor(unittest.TestCase):
         # No more calls to analyzers or drawing functions that need landmarks
         self.assertEqual(mock_movement_analyzer.return_value.analyze.call_count, 1)
         self.assertEqual(mock_write_csv.call_count, 1)
+
+
+# -------------------------
+# Additional tests for video_processor.py
+# -------------------------
+
+
+def _make_video_processor():
+    """Helper: construct VideoProcessor with safe default numeric parameters."""
+    return VideoProcessor(
+        video_path="videos/sample.mp4",
+        output_csv_path=None,
+        output_video_path=None,
+        disable_japanese=True,
+        stay_threshold_sec=5.0,
+        spike_threshold=2.0,
+        stability_threshold_px=10.0,
+        grace_period_sec=1.0,
+        pm_monitoring_duration_sec=5.0,
+        pm_alert_threshold_ratio=0.5,
+        uc_threshold_deg=15.0,
+        uc_moving_window_seconds=2.0,
+    )
+
+
+def test___enter___raises_when_video_cannot_open(monkeypatch):
+    """__enter__ must raise OSError when cv2.VideoCapture cannot open the video file."""
+    vp = _make_video_processor()
+
+    class FakeCap:
+        def __init__(self, path):
+            self.path = path
+
+        def isOpened(self):  # noqa: N802
+            return False
+
+        def release(self):
+            pass
+
+    # Monkeypatch the VideoCapture constructor used inside the module
+    monkeypatch.setattr("src.video_processor.cv2.VideoCapture", lambda p: FakeCap(p))
+
+    with pytest.raises(OSError), vp:
+        # Entering the context triggers __enter__ which should raise
+        pass
+
+
+def test__setup_paths_sets_defaults_when_none(tmp_path):
+    """When output paths are None, _setup_paths should populate default output paths that include the file stem."""
+    # Use a fake video path under a tmp location to exercise Path(p).stem logic
+    video_path = str(tmp_path / "somefolder" / "myvideo.mp4")
+    vp = _make_video_processor()
+    vp.video_path = video_path
+    vp.output_csv_path = None
+    vp.output_video_path = None
+
+    vp._setup_paths()
+
+    # Both should be set and include the video stem
+    assert vp.output_csv_path is not None
+    assert "myvideo_analysis_" in Path(vp.output_csv_path).name
+    assert vp.output_video_path is not None
+    assert "myvideo_output_" in Path(vp.output_video_path).name
+
+    # They should be placed under the 'output' directory per implementation
+    assert Path(vp.output_csv_path).parts[0] == "output"
+    assert Path(vp.output_video_path).parts[0] == "output"
+
+
+def test__process_frame_prints_notification_when_conditions_met(monkeypatch, capsys):
+    """
+    _process_frame prints a notification when:
+      - user_classifier.get_current_alert() is not None (user_is_classified)
+      - dwell_time_detector.get_current_status()['is_long_stay'] is True (is_long_stay)
+      - dwell_time_detector.stay_info exists and stay_info.notified is False
+    This test monkeypatches drawing / I/O helpers into no-ops so we only assert the printed text.
+    """
+    vp = _make_video_processor()
+
+    # Minimal dummy frame
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+
+    # Monkeypatch drawing and CSV functions to be no-ops so the test focuses on the print branch
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, landmarks: f)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, a, landmarks, disable_japanese: f)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.write_results_to_csv", lambda **kw: None)
+
+    # Attach simple components expected by _process_frame
+    # Pose estimator returns a landmarks array (non-None) so processing continues
+    vp.pose_estimator = SimpleNamespace(estimate=lambda fr: np.zeros((33, 4)))
+    # Analyzer returns an analysis_results dict
+    vp.analyzer = SimpleNamespace(analyze=lambda lm: {})
+    # user_classifier: get_current_alert returning non-None -> classified
+    vp.user_classifier = SimpleNamespace(update=lambda *a, **k: None, get_current_alert=lambda: "SOME_ALERT")
+
+    # Dwell detector: get_current_status says is_long_stay True, and stay_info.notified == False
+    stay_info = SimpleNamespace(notified=False)
+    vp.dwell_time_detector = SimpleNamespace(
+        update=lambda lm, shape, ts: None,
+        get_current_status=lambda: {"is_long_stay": True},
+        stay_info=stay_info,
+    )
+
+    # Other modules: no-op implementations
+    vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
+    vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda ts: [])
+    vp.video_writer = SimpleNamespace(write=lambda fr: None)
+    vp.csv_writer = None  # write_results_to_csv was monkeypatched to no-op
+
+    # Call the method and capture stdout
+    ts = 12.34
+    _ = vp._process_frame(frame, frame_count=0, timestamp=ts)
+    captured = capsys.readouterr()
+
+    expected = f"[{ts:.1f}s] 通知: 指定エリアのお客様対応をお願いします。"
+    assert expected in captured.out
