@@ -1,0 +1,10 @@
+metric,value
+bbox_mean_movement,5.546881994722484
+bbox_std_movement,4.756190343694996
+bbox_max_movement,22.808989455914087
+hip_mean_movement,4.965359044727986
+hip_std_movement,4.020173443734704
+hip_max_movement,19.32748963727247
+stability_ratio,0.8452507475997072
+valid_frames,195.0
+total_frames,273.0

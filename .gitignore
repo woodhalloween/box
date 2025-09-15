@@ -52,10 +52,17 @@ ENV/
 *.mov
 *.MP4
 
+# テスト用の動画ファイルはGit LFSで管理するため、ignore対象から除外する
+!tests/**/*.mp4
+
 # Log files
 logs/
 *.log
 log_*.csv
+test_log.csv
+
+# Model files
+*.pt
 
 # === Poetry ===
 # Lockファイルは絶対に残す（＝チームの試合オーダー）
@@ -70,3 +77,6 @@ log_*.csv
 htmlcov/
 coverage.xml
 tests/**/.coverage
+
+# Output files
+output/

@@ -1,13 +1,9 @@
 #!/bin/bash
+# プロジェクトのルートディレクトリにいることを確認
+# (このスクリプトがプロジェクトルートから実行されることを想定)
 
-# 開発用の依存関係をインストール
-echo "開発用の依存関係をインストール中..."
-pip install -r requirements-dev.txt
-
-# テストを実行
 echo "テストを実行中..."
-python -m pytest tests/ -v --cov=scripts
+poetry run pytest --cov=src --cov-report=html --cov-report=term tests/
 
-# カバレッジレポートを表示
 echo "カバレッジレポート:"
-python -m pytest tests/ --cov=scripts --cov-report=term-missing 
+poetry run pytest --cov=src --cov-report=term-missing tests/ 

@@ -1,4 +1,5 @@
 # .github/workflows/python-ci.yml
+# Force update: 2024-08-28
 
 name: Python CI
 
@@ -23,6 +24,8 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -36,7 +39,7 @@ jobs:
           poetry --version
 
       - name: 📦 Install dependencies
-        run: poetry install --with dev
+        run: poetry install
 
       - name: 🔍 Ruff lint
         run: poetry run ruff check .
@@ -57,6 +60,8 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v5
@@ -70,12 +75,15 @@ jobs:
           poetry --version
 
       - name: 📦 Install dependencies
-        run: poetry install --with dev
+        run: poetry install
 
       - name: 🧱 Install OpenCV system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgl1
+          sudo apt-get install -y libglib2.0-0 libsm6 libxrender1 libxext6 libgl1 ffmpeg
+
+      - name: 🕵️ List installed packages for debugging
+        run: poetry run pip list
 
       - name: 🧪 Collect test metadata (check import errors)
         run: |

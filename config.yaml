@@ -1,0 +1,37 @@
+# This file contains the default settings for the pose estimation application.
+# Command-line arguments will override these settings.
+
+posture_monitor:
+  # Settings for the PostureMonitor which detects forward leaning.
+  monitoring_duration_sec: 60.0
+  alert_threshold_ratio: 0.7
+
+user_classifier:
+  # Settings for the UserClassifier which detects low knee angles (e.g., for wheelchairs).
+  # This was formerly known as KneeAngleMonitor.
+  threshold_deg: 90.0
+  moving_window_seconds: 5
+  confidence_threshold: 0.7
+
+dwell_time_detector:
+  # Settings for the DwellTimeDetector which detects long stays based on hip position.
+  stay_threshold_sec: 10.0
+  confidence_threshold: 0.5
+  # Advanced parameters for movement detection logic
+  advanced_detection:
+    spike_threshold: 1.5
+    stability_threshold_px: 50.0
+    grace_period_sec: 1.5
+  use_normalization: false
+  normalization_base: "torso"
+
+head_shake_detector:
+  # Settings for detecting head shakes and nods.
+  horizontal_threshold_deg: 15.0
+  vertical_threshold_deg: 10.0
+  cycle_detection_window_frames: 60
+  min_oscillations: 2
+
+movement_analyzer:
+  # Confidence threshold for a keypoint to be considered valid for angle calculation.
+  confidence_threshold: 0.7
