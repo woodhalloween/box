@@ -180,3 +180,164 @@ class TestDwellTimeDetector(unittest.TestCase):
         self.assertIsNotNone(alert)
         self.assertIn("[!] Long Stay Detected", alert)
         self.assertTrue(self.detector.stay_info.notified)
+
+    def test_compute_person_scale_visible_exception_returns_none(self):
+        """visible() should catch TypeError/ValueError and treat the point as not visible -> returns None for scale."""
+        # Use object dtype to inject an invalid confidence value that raises when cast to float
+        landmarks = np.zeros((33, 4), dtype=object)
+        height, width = self.frame_shape[:2]
+        # Set shoulders and hips coordinates (normalized)
+        landmarks[BodyPart.LEFT_SHOULDER] = [0.4, 0.4, 0.0, "INVALID"]
+        landmarks[BodyPart.RIGHT_SHOULDER] = [0.6, 0.4, 0.0, 1.0]
+        landmarks[BodyPart.LEFT_HIP] = [0.4, 0.6, 0.0, 1.0]
+        landmarks[BodyPart.RIGHT_HIP] = [0.6, 0.6, 0.0, 1.0]
+        # Shoulder-based normalization requires both shoulders visible;
+        # LEFT_SHOULDER confidence casting will raise -> visible() returns False -> returns None
+        self.detector.normalization_base = "shoulder"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertIsNone(scale)
+
+    def test_compute_person_scale_shoulder_requires_both_visible(self):
+        """When normalization_base='shoulder', if either shoulder is not visible, return None."""
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.5, torso_len_norm=0.2).copy()
+        # Hide right shoulder by lowering its visibility below threshold
+        landmarks[BodyPart.RIGHT_SHOULDER][3] = 0.0
+        self.detector.normalization_base = "shoulder"
+        scale = self.detector._compute_person_scale(landmarks, self.frame_shape)
+        self.assertIsNone(scale)
+
+    def test_compute_person_scale_handles_index_error(self):
+        """_compute_person_scale should return None when landmarks indexing fails (IndexError/TypeError)."""
+        # Too few landmarks to index shoulders/hips -> IndexError inside function
+        malformed = np.zeros((1, 4), dtype=np.float32)
+        self.detector.normalization_base = "torso"
+        scale = self.detector._compute_person_scale(malformed, self.frame_shape)
+        self.assertIsNone(scale)
+
+    def test_extract_hip_center_returns_none_when_landmarks_none(self):
+        """extract_hip_center should return None when landmarks is None."""
+        center = self.detector.extract_hip_center(None, self.frame_shape)
+        self.assertIsNone(center)
+
+    def test_extract_hip_center_prefers_left_then_right_and_none(self):
+        """extract_hip_center should return left hip if visible, else right hip if visible, else None."""
+        # Start with both visible
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.5)
+        # Case 1: Both visible -> function may choose center or specific hip; we force left-only visible
+        landmarks_left_only = landmarks.copy()
+        landmarks_left_only[BodyPart.RIGHT_HIP][3] = 0.0  # hide right
+        res_left = self.detector.extract_hip_center(landmarks_left_only, self.frame_shape)
+        self.assertIsNotNone(res_left)
+        # Expect pixel coordinates of left hip
+        left_px_x = int(self.frame_shape[1] * landmarks_left_only[BodyPart.LEFT_HIP][0])
+        left_px_y = int(self.frame_shape[0] * landmarks_left_only[BodyPart.LEFT_HIP][1])
+        self.assertAlmostEqual(res_left[0], left_px_x, delta=1.0)
+        self.assertAlmostEqual(res_left[1], left_px_y, delta=1.0)
+        self.assertGreaterEqual(res_left[2], self.detector.confidence_threshold)
+
+        # Case 2: Only right visible
+        landmarks_right_only = landmarks.copy()
+        landmarks_right_only[BodyPart.LEFT_HIP][3] = 0.0  # hide left
+        res_right = self.detector.extract_hip_center(landmarks_right_only, self.frame_shape)
+        self.assertIsNotNone(res_right)
+        right_px_x = int(self.frame_shape[1] * landmarks_right_only[BodyPart.RIGHT_HIP][0])
+        right_px_y = int(self.frame_shape[0] * landmarks_right_only[BodyPart.RIGHT_HIP][1])
+        self.assertAlmostEqual(res_right[0], right_px_x, delta=1.0)
+        self.assertAlmostEqual(res_right[1], right_px_y, delta=1.0)
+        self.assertGreaterEqual(res_right[2], self.detector.confidence_threshold)
+
+        # Case 3: Neither visible -> None
+        landmarks_none = landmarks.copy()
+        landmarks_none[BodyPart.LEFT_HIP][3] = 0.0
+        landmarks_none[BodyPart.RIGHT_HIP][3] = 0.0
+        res_none = self.detector.extract_hip_center(landmarks_none, self.frame_shape)
+        self.assertIsNone(res_none)
+
+    def test_extract_hip_center_handles_index_error(self):
+        """extract_hip_center should return None when indexing fails (malformed array)."""
+        malformed = np.zeros((1, 4), dtype=np.float32)
+        res = self.detector.extract_hip_center(malformed, self.frame_shape)
+        self.assertIsNone(res)
+
+    def test_update_resets_on_missing_hip_data(self):
+        """When hip_data becomes None while staying, detector should reset stay info and return None."""
+        # Initialize by providing valid hip data
+        landmarks = self._create_dummy_landmarks(hip_y_norm=0.5)
+        self.detector.update(landmarks, self.frame_shape, timestamp=0.0)
+        self.assertIsNotNone(self.detector.stay_info)
+
+        # Now provide no landmarks so hip_data is None
+        alert = self.detector.update(None, self.frame_shape, timestamp=0.5)
+        self.assertIsNone(alert)
+        # After reset, stay_info should exist and stay_duration reset to 0
+        self.assertIsNotNone(self.detector.stay_info)
+        self.assertEqual(self.detector.stay_info.stay_duration, 0.0)
+
+    def test_potential_move_grace_fallback_to_staying_explicit(self):
+        """Explicitly verify POTENTIAL_MOVE reverts to STAYING after grace period without confirming movement."""
+        # 1) Establish initial stay
+        start = self._create_dummy_landmarks(hip_y_norm=0.5)
+        self.detector.update(start, self.frame_shape, timestamp=0.0)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+        # 2) Large movement to trigger POTENTIAL_MOVE
+        moved = self._create_dummy_landmarks(hip_y_norm=0.8)
+        self.detector.update(moved, self.frame_shape, timestamp=0.2)
+        self.assertEqual(self.detector.state, DwellTimeState.POTENTIAL_MOVE)
+
+        # 3) Hold position (no further large movement) past grace period
+        self.detector.update(moved, self.frame_shape, timestamp=1.3)  # grace_period is 1.0
+        # Should revert to STAYING (false alarm resolved)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+    def test_potential_move_reverts_to_staying_after_grace_period(self):
+        """When in POTENTIAL_MOVE and no further significant movement occurs beyond the grace period, the state should revert to STAYING (false alarm)."""
+        # 1) Initialize with a stable position
+        start = self._create_dummy_landmarks(hip_y_norm=0.5)
+        self.detector.update(start, self.frame_shape, timestamp=0.0)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+        # 2) Make a large movement to trigger POTENTIAL_MOVE
+        moved = self._create_dummy_landmarks(hip_y_norm=0.8)
+        self.detector.update(moved, self.frame_shape, timestamp=0.2)
+        self.assertEqual(self.detector.state, DwellTimeState.POTENTIAL_MOVE)
+
+        # 3) Avoid spike-based confirmation during grace
+        self.detector.spike_threshold = 9999.0
+
+        # 4) Within grace, keep position (no extra movement)
+        self.detector.update(moved, self.frame_shape, timestamp=0.7)
+
+        # 5) After grace expires, detector should revert to STAYING (false alarm)
+        self.detector.update(moved, self.frame_shape, timestamp=1.3)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+
+
+    def test_potential_move_false_alarm_updates_fields_and_returns_none(self):
+        """After POTENTIAL_MOVE times out (false alarm), state must be STAYING and common fields updated with no alert returned."""
+        # 1) Begin with a stable stay
+        start = self._create_dummy_landmarks(hip_y_norm=0.5)
+        self.detector.update(start, self.frame_shape, timestamp=0.0)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+        # 2) Trigger POTENTIAL_MOVE via a large displacement
+        moved = self._create_dummy_landmarks(hip_y_norm=0.8)
+        self.detector.update(moved, self.frame_shape, timestamp=0.2)
+        self.assertEqual(self.detector.state, DwellTimeState.POTENTIAL_MOVE)
+
+        # 3) To avoid movement confirmation from spike history, raise the spike threshold during grace
+        self.detector.spike_threshold = 9999.0  # ensure is_spike=False for subsequent frames
+
+        # 4) Provide an update within grace period (no additional movement)
+        alert_mid = self.detector.update(moved, self.frame_shape, timestamp=0.7)  # still within grace
+        self.assertIsNone(alert_mid)
+
+        # 5) Exceed grace period with continued stability -> should revert to STAYING (false alarm)
+        alert = self.detector.update(moved, self.frame_shape, timestamp=1.3)  # > 0.2 + grace(1.0)
+        self.assertIsNone(alert)
+        self.assertEqual(self.detector.state, DwellTimeState.STAYING)
+
+        # 6) Common fields should be updated to the latest frame's values
+        self.assertAlmostEqual(self.detector.stay_info.last_update_time, 1.3, places=6)
+        self.assertGreaterEqual(self.detector.stay_info.confidence_score, self.detector.confidence_threshold)
