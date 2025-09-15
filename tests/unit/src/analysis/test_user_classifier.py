@@ -148,3 +148,15 @@ class TestUserClassifier(unittest.TestCase):
         # 履歴は [ (0, 160), (1, 80), (2, 160) ] となり、MA (133.3) は閾値を下回らない
         alerts = self.monitor.update(3.1, self._create_dummy_results(160.0))
         self.assertFalse(any("MA" in alert for alert in alerts))
+
+    def test_moving_average_returns_none_when_history_empty(self):
+        """Ensure _moving_average returns (None, None) when no medians have been recorded."""
+        # Create a fresh monitor with an empty history
+        monitor = UserClassifier(threshold_deg=90.0, moving_window_seconds=3, confidence_threshold=0.5)
+        # Sanity-check: history should be empty before any update
+        self.assertEqual(len(monitor.medians_history), 0)
+        # Call the internal helper to compute moving averages
+        left_ma, right_ma = monitor._moving_average()
+        # Both moving averages should be None when history is empty
+        self.assertIsNone(left_ma)
+        self.assertIsNone(right_ma)
