@@ -121,3 +121,18 @@ class TestPostureMonitor(unittest.TestCase):
         _, upright_score = self.monitor.is_forward_leaning_posture(self._create_dummy_results(is_leaning=False))
         expected_avg_score = (leaning_score * 2 + upright_score) / 3
         self.assertAlmostEqual(status["avg_score"], expected_avg_score)
+
+    def test_is_forward_leaning_posture_returns_default_when_no_data(self):
+        """Ensure is_forward_leaning_posture returns (False, 0.0) when no relevant data is provided"""
+        # Empty analysis_results should lead to default (False, 0.0)
+        is_leaning, score = self.monitor.is_forward_leaning_posture({})
+        self.assertFalse(is_leaning)
+        self.assertEqual(score, 0.0)
+
+    def test_check_for_alerts_returns_empty_when_no_history(self):
+        """Ensure _check_for_alerts returns empty alerts when posture_history is empty"""
+        # Confirm posture_history is empty
+        self.assertEqual(len(self.monitor.posture_history), 0)
+        # Directly call _check_for_alerts with arbitrary timestamp
+        alerts = self.monitor._check_for_alerts(current_time=10.0)
+        self.assertEqual(alerts, [])
