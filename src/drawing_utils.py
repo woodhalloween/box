@@ -215,3 +215,42 @@ def draw_analysis_results(
         cv2.line(img_with_text, lh, rh, (255, 255, 0), 2)
 
     return img_with_text
+
+
+def draw_hand_raise_status(
+    image: np.ndarray,
+    hand_statuses: dict[str, bool],
+    font_size: int = 20,
+    position: tuple[int, int] = (10, 30),
+) -> np.ndarray:
+    """
+    手の挙上状態を画像に描画する。
+
+    Args:
+        image (np.ndarray): 描画対象の画像。
+        hand_statuses (dict[str, bool]):
+            左右の手の挙上状態を示す辞書。
+            例: {'left_hand_raised': True, 'right_hand_raised': False}
+        font_size (int): フォントサイズ。
+        position (tuple[int, int]): テキストを描画する左上の座標。
+
+    Returns:
+        np.ndarray: テキストが描画された画像。
+    """
+    y_offset = position[1]
+    img_with_text = image.copy()
+
+    # 左手の状態を描画
+    left_status = hand_statuses.get("left_hand_raised", False)
+    left_text = "左手 挙手"
+    left_color = (0, 255, 0) if left_status else (128, 128, 128)  # 挙手:緑, その他:灰色
+    img_with_text = draw_japanese_text(img_with_text, left_text, (position[0], y_offset), font_size, left_color)
+    y_offset += font_size + 10
+
+    # 右手の状態を描画
+    right_status = hand_statuses.get("right_hand_raised", False)
+    right_text = "右手 挙手"
+    right_color = (0, 255, 0) if right_status else (128, 128, 128)
+    img_with_text = draw_japanese_text(img_with_text, right_text, (position[0], y_offset), font_size, right_color)
+
+    return img_with_text

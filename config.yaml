@@ -35,3 +35,12 @@ head_shake_detector:
 movement_analyzer:
   # Confidence threshold for a keypoint to be considered valid for angle calculation.
   confidence_threshold: 0.7
+
+hand_raise:
+  # 姿勢ランドマークの信頼度(visibility)の閾値 (0.0 ~ 1.0)
+  # この値未満の信頼度のキーポイントは判定に使用されない
+  visibility_threshold: 0.5
+
+  # 手挙げ状態として確定するために必要な最小連続フレーム数
+  # チャタリング（瞬間的な誤検出）を防ぐためのパラメータ
+  min_consecutive_frames: 5
