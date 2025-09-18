@@ -1,0 +1,197 @@
+# test_process_frame.py
+import numpy as np
+
+# ⬇️ CHANGE THIS to the actual module containing `process_frame`
+# e.g., from src.processing.core import process_frame as fn
+from src.video_processor import process_frame as fn  # <-- adjust if needed
+
+
+class _PoseFake:
+    def __init__(self, landmarks):
+        self._landmarks = landmarks
+        self.calls = []
+
+    def estimate(self, frame):
+        # record a tiny observable side effect
+        self.calls.append(("estimate", frame.shape))
+        return self._landmarks
+
+
+class _AnalyzerFake:
+    def __init__(self, result):
+        self._result = result
+        self.calls = 0
+
+    def analyze(self, landmarks):
+        self.calls += 1
+        return dict(self._result)  # return a copy to ensure mutation path covered
+
+
+class _PostureMonitorFake:
+    def __init__(self, alerts):
+        self._alerts = list(alerts)
+        self.calls = []
+
+    def update(self, t, frame_idx, results):
+        self.calls.append((t, frame_idx, bool(results)))
+        # return list to ensure .extend path is hit
+        return list(self._alerts)
+
+
+class _DwellFake:
+    def __init__(self, dwell_alert):
+        self._dwell_alert = dwell_alert
+        self.calls = []
+
+    def update(self, landmarks, frame_shape, t):
+        self.calls.append((frame_shape, t))
+        # may be a string (truthy) or None (falsy)
+        return self._dwell_alert
+
+
+class _HeadShakeFake:
+    def __init__(self, update_dict, check_alerts_list):
+        self._update_dict = dict(update_dict)
+        self._alerts = list(check_alerts_list)
+        self.update_calls = 0
+        self.check_calls = 0
+
+    def update(self, landmarks, t, frame_idx):
+        self.update_calls += 1
+        # return dict to ensure results.update(...) is exercised
+        return dict(self._update_dict)
+
+    def check_alerts(self, t):
+        self.check_calls += 1
+        # list so that alerts.extend(...) is exercised
+        return list(self._alerts)
+
+
+def _mk_state(
+    *,
+    landmarks,
+    analyzer_result,
+    posture_alerts,
+    dwell_alert,
+    head_update_dict,
+    head_alerts,
+    frame_idx=42,
+    disable_jp=True,
+):
+    # Minimal “PipelineState” duck type
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks)
+    s.analyzer = _AnalyzerFake(analyzer_result)
+    s.posture_monitor = _PostureMonitorFake(posture_alerts)
+    s.dwell_time_detector = _DwellFake(dwell_alert)
+    s.head_shake_detector = _HeadShakeFake(head_update_dict, head_alerts)
+    s.user_classifier = object()  # only passed through to draw function
+    s.frame_idx = frame_idx
+    s.disable_jp = disable_jp
+    s.last_landmarks = "UNTOUCHED"
+    s.last_head_alerts = "UNTOUCHED"
+    return s
+
+
+def test_process_frame_no_landmarks_early_return(monkeypatch):
+    """
+    When pose.estimate returns None:
+      - original frame is returned (unmodified),
+      - results dict is empty,
+      - alerts list is empty,
+      - aux contains dwell_alert None,
+      - state.last_landmarks is set to None.
+    """
+
+    # stub draw functions should never be called in this branch
+    def _boom(*a, **k):
+        raise AssertionError("draw functions must not be called when landmarks is None")
+
+    # Patch by dotted path (single string each)
+    monkeypatch.setattr("src.video_processor.draw_landmarks", _boom)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", _boom)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", _boom)
+
+    state = _mk_state(
+        landmarks=None, analyzer_result={}, posture_alerts=[], dwell_alert=None, head_update_dict={}, head_alerts=[]
+    )
+    frame_in = np.zeros((2, 3, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame_in, t=0.0, state=state)
+
+    assert out_frame is frame_in
+    assert results == {}
+    assert alerts == []
+    assert aux == {"dwell_alert": None}
+    assert state.last_landmarks is None
+
+
+def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
+    """
+    Full pipeline path:
+      - landmarks present
+      - analyzer returns dict
+      - posture monitor returns alerts
+      - dwell detector returns a truthy alert (added to alerts and aux)
+      - head shake adds results and alerts
+      - draw functions are called in order and fed correct args
+      - state.last_landmarks & last_head_alerts are updated
+    """
+    calls = {"draw": []}
+
+    def fake_draw_landmarks(frame, landmarks):
+        calls["draw"].append(("landmarks", frame.shape, landmarks))
+        return frame  # pass-through
+
+    def fake_draw_analysis_results(frame, results, landmarks, *, disable_japanese):
+        calls["draw"].append(("analysis", bool(results), disable_japanese))
+        return frame
+
+    def fake_draw_detection_info(
+        frame,
+        user_classifier,
+        dwell_time_detector,
+        head_shake_detector,
+        posture_monitor,
+        posture_alerts,
+        landmarks,
+        t,
+    ):
+        calls["draw"].append(("info", type(user_classifier).__name__, bool(posture_alerts), t, landmarks))
+        return frame
+
+    # Patch the drawing functions using fully qualified dotted paths
+    monkeypatch.setattr("src.video_processor.draw_landmarks", fake_draw_landmarks)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", fake_draw_analysis_results)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", fake_draw_detection_info)
+
+    landmarks = object()  # any non-None sentinel
+    state = _mk_state(
+        landmarks=landmarks,
+        analyzer_result={"knee": {"angle": 90.0}},
+        posture_alerts=["POSTURE_BAD"],
+        dwell_alert="DWELL_ALERT",
+        head_update_dict={"head_shake": {"score": 0.8}},
+        head_alerts=["HEAD_ALERT_A", "HEAD_ALERT_B"],
+        frame_idx=7,
+        disable_jp=False,
+    )
+
+    frame_in = np.zeros((480, 640, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame_in, t=1.23, state=state)
+
+    assert out_frame is frame_in
+    assert "knee" in results and "head_shake" in results
+    assert results["head_shake"]["score"] == 0.8
+    assert alerts == ["POSTURE_BAD", "DWELL_ALERT", "HEAD_ALERT_A", "HEAD_ALERT_B"]
+    assert aux["dwell_alert"] == "DWELL_ALERT"
+    assert state.last_landmarks is landmarks
+    assert state.last_head_alerts == ["HEAD_ALERT_A", "HEAD_ALERT_B"]
+
+    # Verify draw call ordering
+    assert calls["draw"][0][0] == "landmarks"
+    assert calls["draw"][1] == ("analysis", True, False)  # disable_japanese=False
+    assert calls["draw"][2][0] == "info"
+    assert calls["draw"][2][2] is True and calls["draw"][2][3] == 1.23

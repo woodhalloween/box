@@ -4,6 +4,7 @@ import io
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from src.io_utils import setup_csv_writer, setup_video_writer, write_results_to_csv
 
@@ -49,6 +50,61 @@ def test_setup_video_writer_uses_capture_properties_and_calls_cv2(monkeypatch):
     assert created["fps"] == int(29.97)
     assert created["size"] == (640, 360)
     assert created["fourcc"] == 1234
+
+
+# Import the function under test from the same place as your existing test
+
+
+def test_setup_video_writer_tuple_success(monkeypatch):
+    """Tuple path: (H, W) with fps provided should call cv2.VideoWriter correctly."""
+
+    created = {}
+
+    # Capture args passed to cv2.VideoWriter
+    def fake_vw(path, fourcc, fps, size):
+        created["path"] = path
+        created["fourcc"] = fourcc
+        created["fps"] = fps
+        created["size"] = size
+        return "FAKE_WRITER_TUPLE"
+
+    # Patch cv2 symbols inside the module under test
+    monkeypatch.setattr("src.io_utils.cv2.VideoWriter", fake_vw)
+    monkeypatch.setattr("src.io_utils.cv2.VideoWriter_fourcc", lambda *a: 4321)
+
+    # (H, W) = (720, 1280); ensure order becomes (W, H)
+    writer = setup_video_writer((720, 1280), output_path="output/tuple.mp4", fps=60)
+    assert writer == "FAKE_WRITER_TUPLE"
+
+    # Validate the call converted types appropriately
+    assert created["path"] == "output/tuple.mp4"
+    assert created["fourcc"] == 4321
+    # fps must be cast to float by the implementation
+    assert isinstance(created["fps"], float) and created["fps"] == 60.0
+    # size must be (W, H) with ints
+    assert created["size"] == (1280, 720)
+
+
+def test_setup_video_writer_tuple_missing_fps_raises(monkeypatch):
+    """Tuple path without fps must raise ValueError."""
+    # Prevent hitting real OpenCV even though the error triggers before VideoWriter call
+    monkeypatch.setattr("src.io_utils.cv2.VideoWriter_fourcc", lambda *a: 0)
+
+    with pytest.raises(ValueError) as ei:
+        setup_video_writer((480, 640), output_path="out.mp4", fps=None)
+    assert "fps must be provided" in str(ei.value)
+
+
+def test_setup_video_writer_invalid_arg_type_raises(monkeypatch):
+    """Unsupported arg types must raise TypeError."""
+    monkeypatch.setattr("src.io_utils.cv2.VideoWriter_fourcc", lambda *a: 0)
+
+    class NoGet:
+        pass  # lacks .get and not a (H, W) tuple
+
+    with pytest.raises(TypeError) as ei:
+        setup_video_writer(NoGet(), output_path="out.mp4", fps=None)
+    assert "capture-like object exposing .get()" in str(ei.value)
 
 
 def test_setup_csv_writer_writes_header_and_landmark_columns(monkeypatch):

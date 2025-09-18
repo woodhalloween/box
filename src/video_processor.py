@@ -4,8 +4,22 @@
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from .definitions import Angle, MovementState
+
+# FFmpegフレーム源（file/camera切替）は io 側に集約
+try:
+    from .io.ffmpeg_io import make_frame_iter  # _build_ffmpeg_cmd / _ffmpeg_frames を内部で使用
+except Exception:  # フォールバック（まだ移行前の環境でも崩れないように）
+    make_frame_iter = None  # type: ignore
+
+import csv  # CSV writer 型注釈に使う（既存の setup_csv_writer を利用）
 
 import cv2
 import numpy as np
@@ -19,6 +33,20 @@ from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmar
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
 from .pose_estimator import PoseEstimator
+
+
+@dataclass
+class PipelineState:
+    pose: PoseEstimator
+    analyzer: MovementAnalyzer
+    user_classifier: UserClassifier
+    dwell_time_detector: DwellTimeDetector
+    head_shake_detector: HeadShakeDetector
+    posture_monitor: PostureMonitor
+    disable_jp: bool = False
+    frame_idx: int = 0
+    last_landmarks: np.ndarray | None = None
+    last_head_alerts: list[str] = field(default_factory=list)
 
 
 class VideoProcessor:
@@ -198,3 +226,206 @@ class VideoProcessor:
 
         self.video_writer.write(frame)
         return frame
+
+
+def process_frame(
+    frame: np.ndarray, t: float, state: PipelineState
+) -> tuple[np.ndarray, dict[Angle, dict[str, float | MovementState]], list[str], dict[str, Any]]:
+    """
+    Pure-lean: consume one frame and return (annotated_frame, analysis_results, alerts, aux).
+    Aux carries small extras like 'dwell_alert' for CSV.
+    """
+    landmarks = state.pose.estimate(frame)
+    state.last_landmarks = landmarks
+    alerts: list[str] = []
+    aux: dict[str, Any] = {"dwell_alert": None}
+
+    if landmarks is None:
+        # No pose → そのまま返す（副作用は上位レイヤのsinkが担当）
+        return frame, {}, alerts, aux
+
+    # Core analysis
+    results = state.analyzer.analyze(landmarks)
+
+    # Posture
+    posture_alerts = state.posture_monitor.update(t, state.frame_idx, results)
+    alerts.extend(posture_alerts)
+
+    # Dwell (hip-based stay)
+    dwell_alert = state.dwell_time_detector.update(landmarks, frame.shape, t)
+    if dwell_alert:
+        alerts.append(dwell_alert)
+    aux["dwell_alert"] = dwell_alert
+
+    # Head shake
+    hs_results = state.head_shake_detector.update(landmarks, t, state.frame_idx)
+    results.update(hs_results)
+    head_alerts = state.head_shake_detector.check_alerts(t)
+    alerts.extend(head_alerts)
+    state.last_head_alerts = head_alerts
+
+    # Drawing (annotation only; I/Oは上位で)
+    frame = draw_landmarks(frame, landmarks)
+    frame = draw_analysis_results(frame, results, landmarks, disable_japanese=state.disable_jp)
+    frame = draw_detection_info(
+        frame,
+        state.user_classifier,
+        state.dwell_time_detector,
+        state.head_shake_detector,
+        state.posture_monitor,
+        posture_alerts,
+        landmarks,
+        t,
+    )
+    return frame, results, alerts, aux
+
+
+def run_pipeline(
+    frame_iter: Iterator[tuple[float, np.ndarray]],
+    *,
+    csv_writer: csv.DictWriter | None,
+    video_writer: cv2.VideoWriter | None,
+    state: PipelineState,
+    preview: bool = True,
+    window_name: str = "Integrated Analysis",
+) -> None:
+    """
+    Iterate frames (t, frame) → process → write CSV/video → optional preview.
+    """
+    try:
+        for t, frame in frame_iter:
+            annotated, results, alerts, aux = process_frame(frame, t, state)
+
+            # CSV sink
+            if csv_writer is not None:
+                write_results_to_csv(
+                    csv_writer,
+                    timestamp=t,
+                    frame_number=state.frame_idx,
+                    analysis_results=results,
+                    posture_monitor=state.posture_monitor,
+                    dwell_time_detector=state.dwell_time_detector,
+                    dwell_alert=aux["dwell_alert"],
+                    head_shake_detector=state.head_shake_detector,
+                    head_shake_alerts=state.last_head_alerts,
+                    landmarks=state.last_landmarks,
+                )
+
+            # Video sink
+            if video_writer is not None:
+                video_writer.write(annotated)
+
+            # UI preview（CIでも落ちないよう最低限）
+            if preview:
+                try:
+                    cv2.imshow(window_name, annotated)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                except Exception:
+                    # headless/Waylandなどでも落ちない
+                    pass
+
+            state.frame_idx += 1
+    finally:
+        with contextlib.suppress(Exception):
+            cv2.destroyAllWindows()
+
+
+def process_video(
+    video_path: str,
+    output_csv_path: str | None,
+    output_video_path: str | None,
+    disable_japanese: bool,
+    *,
+    # 既存オプション（VideoProcessor.__init__ と互換のものに寄せる）
+    stay_threshold_sec: float = 60.0,
+    spike_threshold: float = 1.5,
+    stability_threshold_px: float = 50.0,
+    grace_period_sec: float = 1.5,
+    pm_monitoring_duration_sec: float = 60.0,
+    pm_alert_threshold_ratio: float = 0.7,
+    uc_threshold_deg: float = 90.0,
+    uc_moving_window_seconds: float = 5.0,
+    # 新：FFmpeg切替のためのヒント（省略時は自動推定）
+    input_mode: str | None = None,  # "ffmpeg-file" | "ffmpeg-camera"
+    width: int = 1280,
+    height: int = 720,
+    fps: float = 30.0,
+    is_color: bool = True,
+    preview: bool = True,
+) -> None:
+    """
+    Thin facade that wires:
+      source (FFmpeg/OpenCV) -> process -> sinks (CSV/video/UI).
+    """
+    # 1) Modules / state
+    pose = PoseEstimator()
+    analyzer = MovementAnalyzer()
+    user_clf = UserClassifier(threshold_deg=uc_threshold_deg, moving_window_seconds=uc_moving_window_seconds)
+    dwell = DwellTimeDetector(
+        stay_threshold_sec=stay_threshold_sec,
+        spike_threshold=spike_threshold,
+        stability_threshold_px=stability_threshold_px,
+        grace_period_sec=grace_period_sec,
+    )
+    head = HeadShakeDetector(
+        horizontal_threshold=15.0,
+        vertical_threshold=10.0,
+        cycle_detection_window=60,
+        min_oscillations=2,
+    )
+    posture = PostureMonitor(pm_monitoring_duration_sec, pm_alert_threshold_ratio)
+
+    state = PipelineState(
+        pose=pose,
+        analyzer=analyzer,
+        user_classifier=user_clf,
+        dwell_time_detector=dwell,
+        head_shake_detector=head,
+        posture_monitor=posture,
+        disable_jp=disable_japanese,
+    )
+
+    # 2) CSV/Video sinks（既存の setup_* を利用）
+    csv_writer = setup_csv_writer(open(output_csv_path, "w", newline="", encoding="utf-8")) if output_csv_path else None  # noqa: SIM115
+    video_writer = setup_video_writer((height, width), output_video_path) if output_video_path else None
+
+    # 3) Frame source（FFmpeg優先 → フォールバックOpenCV）
+    def _opencv_iter(path: str) -> Iterator[tuple[float, np.ndarray]]:
+        cap = cv2.VideoCapture(path)
+        try:
+            while cap.isOpened():
+                ok, f = cap.read()
+                if not ok:
+                    break
+                t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                yield t, f
+        finally:
+            cap.release()
+
+    # 推定：パスがファイルなら "ffmpeg-file"
+    if input_mode is None:
+        input_mode = "ffmpeg-file" if make_frame_iter is not None else "opencv-file"
+
+    if make_frame_iter is not None and input_mode.startswith("ffmpeg"):
+        frame_iter = make_frame_iter(
+            input_mode,
+            ffmpeg_input=video_path,
+            width=width,
+            height=height,
+            fps=fps,
+            is_color=is_color,
+            add_args=None,
+        )
+    else:
+        frame_iter = _opencv_iter(video_path)
+
+    # 4) Run
+    run_pipeline(
+        frame_iter,
+        csv_writer=csv_writer,
+        video_writer=video_writer,
+        state=state,
+        preview=preview,
+        window_name="Integrated Analysis",
+    )
