@@ -217,6 +217,55 @@ def draw_analysis_results(
     return img_with_text
 
 
+def draw_dwell_status(
+    image: Any,
+    dwell_status: dict[str, object],
+    dwell_alert: str | None,
+    font_size: int = 20,
+    position: tuple[int, int] = (10, 90),
+) -> Any:
+    """滞在検知のステータスを描画する。"""
+
+    img_with_text = image.copy()
+
+    stay_duration = float(dwell_status.get("stay_duration", 0.0) or 0.0)
+    state = str(dwell_status.get("state", "UNKNOWN"))
+    is_long_stay = bool(dwell_status.get("is_long_stay", False))
+    confidence = float(dwell_status.get("confidence", 0.0) or 0.0)
+
+    line_height = font_size + 10
+    long_flag = "あり" if is_long_stay else "なし"
+    info_color = (0, 0, 255) if is_long_stay else (255, 255, 255)
+    info_text = f"滞在: {stay_duration:.1f}s (長期: {long_flag})"
+    state_text = f"状態: {state} / 信頼度: {confidence:.2f}"
+
+    img_with_text = draw_japanese_text(img_with_text, info_text, position, font_size, info_color)
+    img_with_text = draw_japanese_text(
+        img_with_text,
+        state_text,
+        (position[0], position[1] + line_height),
+        font_size,
+        (200, 200, 200),
+    )
+
+    if dwell_alert:
+        img_with_text = draw_japanese_text(
+            img_with_text,
+            dwell_alert,
+            (position[0], position[1] + 2 * line_height),
+            font_size,
+            (0, 0, 255),
+        )
+
+    hip_pos = dwell_status.get("hip_position")
+    if hip_pos:
+        hip_x, hip_y = int(float(hip_pos[0])), int(float(hip_pos[1]))
+        circle_color = (0, 0, 255) if is_long_stay else (0, 255, 255)
+        cv2.circle(img_with_text, (hip_x, hip_y), 8, circle_color, 2)
+
+    return img_with_text
+
+
 def draw_hand_raise_status(
     image: np.ndarray,
     hand_statuses: dict[str, bool],
