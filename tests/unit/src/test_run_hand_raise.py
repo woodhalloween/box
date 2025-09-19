@@ -138,7 +138,7 @@ def test_main_processes_frames_with_stubs(monkeypatch, capsys, tmp_path):
             self.released = False
             capture_instances.append(self)
 
-        def isOpened(self):
+        def isOpened(self):  # noqa: N802 - mimic OpenCV (cv2) API
             return True
 
         def read(self):
@@ -174,7 +174,7 @@ def test_main_processes_frames_with_stubs(monkeypatch, capsys, tmp_path):
             self.released = False
             video_writer_instances.append(self)
 
-        def isOpened(self):
+        def isOpened(self):  # noqa: N802 - mimic OpenCV (cv2) API
             return True
 
         def write(self, frame):

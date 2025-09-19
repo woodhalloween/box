@@ -300,6 +300,4 @@ def draw_hand_raise_status(
     right_status = hand_statuses.get("right_hand_raised", False)
     right_text = "右手 挙手"
     right_color = (0, 255, 0) if right_status else (128, 128, 128)
-    img_with_text = draw_japanese_text(img_with_text, right_text, (position[0], y_offset), font_size, right_color)
-
-    return img_with_text
+    return draw_japanese_text(img_with_text, right_text, (position[0], y_offset), font_size, right_color)

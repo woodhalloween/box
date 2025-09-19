@@ -99,6 +99,4 @@ class HandRaiseDetector:
             return False
 
         # 手首のy座標が肩のy座標より上にあるか（画像座標系なので値が小さいか）
-        is_wrist_above_shoulder = wrist_landmark[1] < shoulder_landmark[1]
-
-        return is_wrist_above_shoulder
+        return wrist_landmark[1] < shoulder_landmark[1]

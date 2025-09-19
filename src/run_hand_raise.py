@@ -1,5 +1,6 @@
 import argparse
 import csv
+from contextlib import ExitStack
 from pathlib import Path
 
 import cv2
@@ -11,7 +12,6 @@ from src.detectors.hand_raise_detector import HandRaiseDetector
 from src.drawing_utils import (
     draw_dwell_status,
     draw_hand_raise_status,
-    draw_japanese_text,
     draw_landmarks,
 )
 from src.pose_estimator import PoseEstimator
@@ -164,105 +164,104 @@ def main():
             video_writer = None
             write_video = False
 
-    csv_file = None
-    csv_writer = None
-    if write_csv:
-        try:
-            csv_file = open(output_csv_path, "w", newline="", encoding="utf-8")
-        except OSError as exc:
-            print(f"警告: CSVを書き出せませんでした ({exc}). CSV出力を無効化します。")
-            write_csv = False
-        else:
-            csv_fieldnames = [
-                "frame_number",
-                "timestamp",
-                "left_hand_raised",
-                "right_hand_raised",
-                "dwell_stay_duration",
-                "dwell_is_long_stay",
-                "dwell_state",
-                "dwell_confidence",
-                "dwell_hip_center_x",
-                "dwell_hip_center_y",
-                "dwell_alert",
-            ]
-            csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fieldnames)
-            csv_writer.writeheader()
-
-    frame_number = 0
     user_aborted = False
     progress_total = total_frames if total_frames > 0 else None
 
-    try:
-        with tqdm(total=progress_total, desc="Processing video", unit="frame") as progress_bar:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
+    with ExitStack() as exit_stack:
+        csv_writer = None
+        if write_csv:
+            try:
+                csv_file = exit_stack.enter_context(open(output_csv_path, "w", newline="", encoding="utf-8"))
+            except OSError as exc:
+                print(f"警告: CSVを書き出せませんでした ({exc}). CSV出力を無効化します。")
+                write_csv = False
+            else:
+                csv_fieldnames = [
+                    "frame_number",
+                    "timestamp",
+                    "left_hand_raised",
+                    "right_hand_raised",
+                    "dwell_stay_duration",
+                    "dwell_is_long_stay",
+                    "dwell_state",
+                    "dwell_confidence",
+                    "dwell_hip_center_x",
+                    "dwell_hip_center_y",
+                    "dwell_alert",
+                ]
+                csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fieldnames)
+                csv_writer.writeheader()
 
-                timestamp = frame_number / fps if fps else frame_number
+        frame_number = 0
 
-                # 姿勢推定
-                landmarks = pose_estimator.estimate(frame)
-
-                # 手挙げ状態判定
-                hand_statuses = hand_raise_detector.detect(landmarks)
-
-                # 滞在時間検出
-                dwell_alert = dwell_time_detector.update(landmarks, frame.shape, timestamp)
-                dwell_status = dwell_time_detector.get_current_status()
-                if dwell_alert:
-                    print(f"[frame {frame_number}] {dwell_alert}")
-
-                if write_csv and csv_writer is not None:
-                    hip_pos = dwell_status.get("hip_position")
-                    hip_x = f"{hip_pos[0]:.1f}" if hip_pos else ""
-                    hip_y = f"{hip_pos[1]:.1f}" if hip_pos else ""
-                    csv_writer.writerow(
-                        {
-                            "frame_number": frame_number,
-                            "timestamp": f"{timestamp:.3f}",
-                            "left_hand_raised": hand_statuses["left_hand_raised"],
-                            "right_hand_raised": hand_statuses["right_hand_raised"],
-                            "dwell_stay_duration": f"{dwell_status.get('stay_duration', 0.0):.3f}",
-                            "dwell_is_long_stay": dwell_status.get("is_long_stay", False),
-                            "dwell_state": dwell_status.get("state", ""),
-                            "dwell_confidence": f"{dwell_status.get('confidence', 0.0):.3f}",
-                            "dwell_hip_center_x": hip_x,
-                            "dwell_hip_center_y": hip_y,
-                            "dwell_alert": dwell_alert or "",
-                        }
-                    )
-
-                processed_frame = frame.copy()
-                if draw_skeleton and landmarks is not None:
-                    draw_landmarks(processed_frame, landmarks)
-                processed_frame = draw_hand_raise_status(processed_frame, hand_statuses)
-                processed_frame = draw_dwell_status(processed_frame, dwell_status, dwell_alert)
-
-                if write_video and video_writer is not None:
-                    video_writer.write(processed_frame)
-
-                frame_number += 1
-                progress_bar.update(1)
-
-                if display_window:
-                    cv2.imshow("Hand Raise Detection", processed_frame)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        user_aborted = True
+        try:
+            with tqdm(total=progress_total, desc="Processing video", unit="frame") as progress_bar:
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
                         break
-    except KeyboardInterrupt:
-        user_aborted = True
-        print("ユーザー操作により処理を中断しました。")
-    finally:
-        cap.release()
-        if video_writer is not None:
-            video_writer.release()
-        if display_window:
-            cv2.destroyAllWindows()
-        if csv_file is not None:
-            csv_file.close()
-        pose_estimator.close()
+
+                    timestamp = frame_number / fps if fps else frame_number
+
+                    # 姿勢推定
+                    landmarks = pose_estimator.estimate(frame)
+
+                    # 手挙げ状態判定
+                    hand_statuses = hand_raise_detector.detect(landmarks)
+
+                    # 滞在時間検出
+                    dwell_alert = dwell_time_detector.update(landmarks, frame.shape, timestamp)
+                    dwell_status = dwell_time_detector.get_current_status()
+                    if dwell_alert:
+                        print(f"[frame {frame_number}] {dwell_alert}")
+
+                    if write_csv and csv_writer is not None:
+                        hip_pos = dwell_status.get("hip_position")
+                        hip_x = f"{hip_pos[0]:.1f}" if hip_pos else ""
+                        hip_y = f"{hip_pos[1]:.1f}" if hip_pos else ""
+                        csv_writer.writerow(
+                            {
+                                "frame_number": frame_number,
+                                "timestamp": f"{timestamp:.3f}",
+                                "left_hand_raised": hand_statuses["left_hand_raised"],
+                                "right_hand_raised": hand_statuses["right_hand_raised"],
+                                "dwell_stay_duration": f"{dwell_status.get('stay_duration', 0.0):.3f}",
+                                "dwell_is_long_stay": dwell_status.get("is_long_stay", False),
+                                "dwell_state": dwell_status.get("state", ""),
+                                "dwell_confidence": f"{dwell_status.get('confidence', 0.0):.3f}",
+                                "dwell_hip_center_x": hip_x,
+                                "dwell_hip_center_y": hip_y,
+                                "dwell_alert": dwell_alert or "",
+                            }
+                        )
+
+                    processed_frame = frame.copy()
+                    if draw_skeleton and landmarks is not None:
+                        draw_landmarks(processed_frame, landmarks)
+                    processed_frame = draw_hand_raise_status(processed_frame, hand_statuses)
+                    processed_frame = draw_dwell_status(processed_frame, dwell_status, dwell_alert)
+
+                    if write_video and video_writer is not None:
+                        video_writer.write(processed_frame)
+
+                    frame_number += 1
+                    progress_bar.update(1)
+
+                    if display_window:
+                        cv2.imshow("Hand Raise Detection", processed_frame)
+                        if cv2.waitKey(1) & 0xFF == ord("q"):
+                            user_aborted = True
+                            break
+        except KeyboardInterrupt:
+            user_aborted = True
+            print("ユーザー操作により処理を中断しました。")
+        finally:
+            cap.release()
+            if video_writer is not None:
+                video_writer.release()
+            if display_window:
+                cv2.destroyAllWindows()
+            pose_estimator.close()
 
     if user_aborted:
         print("処理を途中で終了しました。")
