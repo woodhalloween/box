@@ -599,6 +599,9 @@ def test_main_sets_default_fps_when_zero(monkeypatch, capsys, tmp_path):
         return instance
 
     monkeypatch.setattr(run_hand_raise.cv2, "VideoCapture", DummyCapture)
+    monkeypatch.setattr(run_hand_raise.cv2, "imshow", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hand_raise.cv2, "waitKey", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(run_hand_raise.cv2, "destroyAllWindows", lambda: None)
     monkeypatch.setattr(run_hand_raise, "PoseEstimator", DummyPoseEstimator)
     monkeypatch.setattr(run_hand_raise, "HandRaiseDetector", lambda **_: DummyHandRaiseDetector())
     monkeypatch.setattr(run_hand_raise, "DwellTimeDetector", lambda **_: detectors)
