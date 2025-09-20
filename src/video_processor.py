@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# from typing import Iterator as TypingIterator
 from .definitions import Angle, MovementState
 
 # FFmpegフレーム源（file/camera切替）は io 側に集約
@@ -136,7 +137,7 @@ class VideoProcessor:
         self.pose_estimator = PoseEstimator()
         self.analyzer = MovementAnalyzer()
         self.user_classifier = UserClassifier(
-            threshold_deg=self.uc_threshold_deg, moving_window_seconds=self.uc_moving_window_seconds
+            threshold_deg=self.uc_threshold_deg, moving_window_seconds=int(self.uc_moving_window_seconds)
         )
         self.dwell_time_detector = DwellTimeDetector(
             stay_threshold_sec=self.stay_threshold_sec,
@@ -284,17 +285,26 @@ def run_pipeline(
     frame_iter: Iterator[tuple[float, np.ndarray]],
     *,
     csv_writer: csv.DictWriter | None,
-    video_writer: cv2.VideoWriter | None,
+    video_writer: cv2.VideoWriter | None,  # ← None を許容（遅延初期化）
     state: PipelineState,
     preview: bool = True,
     window_name: str = "Integrated Analysis",
+    # ---- new for lazy init ----
+    output_video_path: str | None = None,  # 出力先パス（None なら書き出しなし）
+    writer_fps: float = 30.0,  # Writer 用FPS（FFmpeg/設定に合わせる）
 ) -> None:
     """
     Iterate frames (t, frame) → process → write CSV/video → optional preview.
+    Lazily initializes the VideoWriter on the first processed frame if `video_writer` is None.
     """
     try:
         for t, frame in frame_iter:
             annotated, results, alerts, aux = process_frame(frame, t, state)
+
+            # ---- Lazy init of VideoWriter ----
+            if video_writer is None and output_video_path:
+                h, w = annotated.shape[:2]  # first actual frame size
+                video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
 
             # CSV sink
             if csv_writer is not None:
@@ -322,12 +332,13 @@ def run_pipeline(
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
                 except Exception:
-                    # headless/Waylandなどでも落ちない
                     pass
 
             state.frame_idx += 1
     finally:
         with contextlib.suppress(Exception):
+            if video_writer is not None:
+                video_writer.release()
             cv2.destroyAllWindows()
 
 
@@ -361,7 +372,7 @@ def process_video(
     # 1) Modules / state
     pose = PoseEstimator()
     analyzer = MovementAnalyzer()
-    user_clf = UserClassifier(threshold_deg=uc_threshold_deg, moving_window_seconds=uc_moving_window_seconds)
+    user_clf = UserClassifier(threshold_deg=uc_threshold_deg, moving_window_seconds=int(uc_moving_window_seconds))
     dwell = DwellTimeDetector(
         stay_threshold_sec=stay_threshold_sec,
         spike_threshold=spike_threshold,
@@ -388,7 +399,8 @@ def process_video(
 
     # 2) CSV/Video sinks（既存の setup_* を利用）
     csv_writer = setup_csv_writer(open(output_csv_path, "w", newline="", encoding="utf-8")) if output_csv_path else None  # noqa: SIM115
-    video_writer = setup_video_writer((height, width), output_video_path) if output_video_path else None
+    # video_writer = None  # ← 遅延初期化に任せる
+    video_writer = setup_video_writer((height, width), output_video_path, fps) if output_video_path else None
 
     # 3) Frame source（FFmpeg優先 → フォールバックOpenCV）
     def _opencv_iter(path: str) -> Iterator[tuple[float, np.ndarray]]:

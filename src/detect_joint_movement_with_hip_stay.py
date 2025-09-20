@@ -12,21 +12,21 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
-from pathlib import Path
 from typing import IO, Any
 
 import cv2
 import mediapipe as mp
 import numpy as np
 
-from .analysis.knee_angle_monitor import KneeAngleMonitor
+from .analysis.dwell_time_detector import DwellTimeDetector  # noqa: F401
 from .analysis.posture_monitor import PostureMonitor
+from .analysis.user_classifier import UserClassifier  # noqa: F401
 from .definitions import Angle, MovementState
-from .drawing_utils import draw_analysis_results, draw_landmarks
 from .head_shake_detector import HeadShakeDetector
-from .movement_analyzer import MovementAnalyzer
+from .movement_analyzer import MovementAnalyzer  # noqa: F401
 from .pose.definitions import BodyPart
-from .pose_estimator import PoseEstimator
+from .pose_estimator import PoseEstimator  # noqa: F401
+from .video_processor import process_video
 
 print("--- デバッグ: detect_joint_movement_with_hip_stay.py の実行開始 ---")
 
@@ -565,213 +565,125 @@ def draw_head_shake_info(
     return frame
 
 
-def process_video(
-    video_path: str,
-    output_csv_path: str | None,
-    output_video_path: str | None,
-    disable_japanese: bool,
-    monitoring_duration: float = 60.0,
-    alert_threshold: float = 0.7,
-    hip_stay_threshold: float = 60.0,
-    hip_normalize: bool = False,
-    hip_norm_base: str = "torso",
-    # --- New Algorithm Params ---
-    spike_threshold: float = 1.5,
-    stability_threshold_px: float = 50.0,
-    grace_period_sec: float = 1.5,
-):
-    """ビデオを処理し、関節の動きと滞在を分析して結果を出力する"""
-    print(f"--- デバッグ: process_video開始, 対象: {video_path} ---")
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"--- デバッグ・エラー: ビデオファイルが開けません: {video_path} ---")
-        return
-    print("--- デバッグ: ビデオファイルを正常に開きました ---")
-
-    p = Path(video_path)
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv_path = output_csv_path or f"output/{p.stem}_integrated_analysis_{timestamp_str}.csv"
-    output_video_path = output_video_path or f"output/{p.stem}_integrated_output_{timestamp_str}.mp4"
-    Path(output_csv_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_video_path).parent.mkdir(parents=True, exist_ok=True)
-
-    video_writer = None
-    try:
-        with open(output_csv_path, "w", newline="", encoding="utf-8") as csv_file:
-            csv_writer = setup_csv_writer(csv_file)
-            video_writer = setup_video_writer(cap, output_video_path)
-
-            pose_estimator = PoseEstimator()
-            analyzer = MovementAnalyzer()
-            posture_monitor = PostureMonitor(monitoring_duration, alert_threshold)
-            hip_detector = HipBasedStayDetector(
-                stay_threshold_sec=hip_stay_threshold,
-                use_normalization=hip_normalize,
-                normalization_base=hip_norm_base,
-                confidence_threshold=0.1,  # Lowered for better detection
-                spike_threshold=spike_threshold,
-                stability_threshold_px=stability_threshold_px,
-                grace_period_sec=grace_period_sec,
-            )
-            knee_monitor = KneeAngleMonitor(
-                threshold_deg=90.0, moving_window_seconds=5, confidence_threshold=0.8
-            )  # 信頼度閾値を追加
-            head_shake_detector = HeadShakeDetector(
-                horizontal_threshold=15.0,
-                vertical_threshold=10.0,
-                cycle_detection_window=60,  # 2秒@30fps
-                min_oscillations=2,
-            )
-
-            frame_count = 0
-            print(f"Processing video: {video_path}")
-            print(f"Outputting to {output_csv_path} and {output_video_path}")
-            if hip_normalize:
-                print(
-                    f"Hip-based Stay Detection: Spike > {spike_threshold:.2f} "
-                    f"| Stability > {stability_threshold_px:.1f}px "
-                    f"| Grace Period {grace_period_sec:.1f}s"
-                )
-
-            while cap.isOpened():
-                success, frame = cap.read()
-                if not success:
-                    print("--- DEBUG: Failed to read frame or end of video.")  # デバッグ出力
-                    break
-
-                timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-
-                if frame_count % 100 == 0:  # 100フレーム毎に出力
-                    print(f"--- DEBUG: Processing frame {frame_count}, timestamp: {timestamp:.2f}s")
-                landmarks = pose_estimator.estimate(frame)
-                hip_alert = None
-                alerts = []
-                head_shake_alerts = []
-                analysis_results = {}
-
-                if landmarks is not None:
-                    analysis_results = analyzer.analyze(landmarks)
-                    alerts = posture_monitor.update(timestamp, frame_count, analysis_results)
-                    hip_alert = hip_detector.update(landmarks, frame.shape, timestamp)
-                    knee_alerts = knee_monitor.update(timestamp, analysis_results)
-                    alerts.extend(knee_alerts)
-
-                    # 首振り検出
-                    head_shake_results = head_shake_detector.update(landmarks, timestamp, frame_count)
-                    analysis_results.update(head_shake_results)
-                    head_shake_alerts = head_shake_detector.check_alerts(timestamp)
-                    alerts.extend(head_shake_alerts)
-
-                    if hip_alert:
-                        print(f"Frame {frame_count}: {hip_alert}")
-
-                    if head_shake_alerts:
-                        for head_alert in head_shake_alerts:
-                            print(f"Frame {frame_count}: {head_alert}")
-
-                    write_results_to_csv(
-                        csv_writer,
-                        timestamp,
-                        frame_count,
-                        analysis_results,
-                        posture_monitor,
-                        hip_detector,
-                        hip_alert,
-                        head_shake_detector,
-                        head_shake_alerts,
-                        landmarks,
-                        frame.shape,
-                    )
-
-                    frame = draw_analysis_results(
-                        image=frame,
-                        results=analysis_results,
-                        landmarks=landmarks,
-                        disable_japanese=disable_japanese,
-                    )
-                    draw_landmarks(frame, landmarks)
-                    frame = draw_hip_stay_info(frame, hip_detector)
-                    frame = draw_head_shake_info(frame, head_shake_detector, landmarks)
-
-                status = posture_monitor.get_status()
-                draw_posture_alerts(frame, alerts, status, knee_monitor.get_current_alert(), head_shake_alerts)
-                if hip_alert:
-                    cv2.putText(
-                        frame,
-                        f"HIP ALERT: {hip_alert}",
-                        (10, frame.shape[0] - 40),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8,
-                        (0, 255, 255),
-                        2,
-                    )
-
-                video_writer.write(frame)
-                cv2.imshow("Integrated Analysis", frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-                frame_count += 1
-    finally:
-        cap.release()
-        if video_writer:
-            video_writer.release()
-        cv2.destroyAllWindows()
-
-
+# --- main & CLI (revised for the new process_video signature) ---
 def main():
-    parser = argparse.ArgumentParser(description="統合版：関節動作分析 + 腰ベース長期滞在検知")
-    parser.add_argument("--video", required=True, help="入力ビデオファイルのパス")
-    parser.add_argument("--confidence-threshold", type=float, default=0.5, help="検出信頼度の閾値")
-    parser.add_argument("--no-display", action="store_true", help="結果表示ウィンドウを無効化")
-    # --- Normalization parameters ---
+    parser = argparse.ArgumentParser(description="Integrated analysis: joint motion + hip-based dwell detection")
+
+    # ---- Input source / switching ----
     parser.add_argument(
-        "--hip-normalize",
-        action="store_true",
-        help="腰の移動判定を人物スケールで正規化",
+        "--video",
+        required=True,
+        help=(
+            "FFmpeg/OpenCV input. File path for 'ffmpeg-file' / 'opencv-file', "
+            "or device for 'ffmpeg-camera' (e.g., '/dev/video0', '0', or "
+            "'video=Integrated Camera' on Windows)."
+        ),
     )
-    # --- New algorithm parameters ---
     parser.add_argument(
-        "--hip-stay-threshold",
+        "--input-mode",
+        choices=["ffmpeg-file", "ffmpeg-camera", "opencv-file"],
+        default=None,
+        help="Frame source backend. If omitted, defaults to 'ffmpeg-file' when available, else 'opencv-file'.",
+    )
+
+    # ---- Output / preview ----
+    parser.add_argument("--no-display", action="store_true", help="Disable preview window (headless/CI).")
+    parser.add_argument("--disable-japanese", action="store_true", help="Disable Japanese labels in overlays.")
+
+    # ---- FFmpeg/OpenCV capture geometry ----
+    parser.add_argument("--width", type=int, default=1280, help="Output width for writer/pipeline.")
+    parser.add_argument("--height", type=int, default=720, help="Output height for writer/pipeline.")
+    parser.add_argument("--fps", type=float, default=30.0, help="Nominal FPS for writer/FFmpeg pacing.")
+    parser.add_argument("--gray", action="store_true", help="Use mono pipeline hint (FFmpeg pix_fmt=gray).")
+
+    # ---- Posture monitor (PM) ----
+    parser.add_argument(
+        "--pm-monitoring-duration-sec",
         type=float,
         default=60.0,
-        help="「長期滞在」と判定する時間の閾値を秒単位で指定します。（デフォルト: 60.0）",
+        help="PostureMonitor window length in seconds.",
+    )
+    parser.add_argument(
+        "--pm-alert-threshold-ratio",
+        type=float,
+        default=0.7,
+        help="PostureMonitor alert threshold ratio.",
+    )
+
+    # ---- Dwell (hip-based stay) ----
+    parser.add_argument(
+        "--stay-threshold-sec",
+        type=float,
+        default=60.0,
+        help="Seconds required to declare long stay.",
     )
     parser.add_argument(
         "--spike-threshold",
         type=float,
         default=1.5,
-        help="移動スパイク検知の閾値（体幹長比）",
+        help="Spike detector threshold (torso-length-normalized).",
     )
     parser.add_argument(
-        "--stability-threshold",
+        "--stability-threshold-px",
         type=float,
         default=50.0,
-        help="検出安定性（体幹長ブレ）の閾値（px）",
+        help="Detector stability threshold (px jitter tolerance).",
     )
-    parser.add_argument("--grace-period", type=float, default=1.5, help="移動検知の猶予期間（秒）")
+    parser.add_argument(
+        "--grace-period-sec",
+        type=float,
+        default=1.5,
+        help="Grace period for movement detection (seconds).",
+    )
+
+    # ---- User classifier (knee angle etc. if used downstream) ----
+    parser.add_argument(
+        "--uc-threshold-deg",
+        type=float,
+        default=90.0,
+        help="Knee angle threshold (degrees).",
+    )
+    parser.add_argument(
+        "--uc-moving-window-seconds",
+        type=float,
+        default=5.0,
+        help="Rolling window for knee angle logic (seconds).",
+    )
+
     args = parser.parse_args()
 
+    # ---- Output paths ----
     output_dir = "output"
     os.makedirs(output_dir, exist_ok=True)
-
     video_basename = f"{os.path.splitext(os.path.basename(args.video))[0]}_integrated"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_video_path = os.path.join(output_dir, f"{video_basename}_output_{timestamp}.mp4")
     output_csv_path = os.path.join(output_dir, f"{video_basename}_analysis_{timestamp}.csv")
 
+    # ---- Call revised process_video ----
     process_video(
         video_path=args.video,
         output_csv_path=output_csv_path,
         output_video_path=output_video_path,
-        disable_japanese=False,
-        monitoring_duration=60.0,
-        alert_threshold=0.7,
-        hip_stay_threshold=args.hip_stay_threshold,
-        hip_normalize=args.hip_normalize,
-        hip_norm_base="torso",
+        disable_japanese=args.disable_japanese,
+        # dwell / detectors
+        stay_threshold_sec=args.stay_threshold_sec,
         spike_threshold=args.spike_threshold,
-        stability_threshold_px=args.stability_threshold,
-        grace_period_sec=args.grace_period,
+        stability_threshold_px=args.stability_threshold_px,
+        grace_period_sec=args.grace_period_sec,
+        # posture monitor
+        pm_monitoring_duration_sec=args.pm_monitoring_duration_sec,
+        pm_alert_threshold_ratio=args.pm_alert_threshold_ratio,
+        # user classifier (knee angle)
+        uc_threshold_deg=args.uc_threshold_deg,
+        uc_moving_window_seconds=args.uc_moving_window_seconds,
+        # source switching / geometry
+        input_mode=args.input_mode,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+        is_color=not args.gray,
+        preview=not args.no_display,
     )
 
 
@@ -779,4 +691,4 @@ if __name__ == "__main__":
     try:
         main()
     except SystemExit as e:
-        print(f"--- デバッグ: argparseがSystemExitを発生させました (exit code: {e.code}) ---")
+        print(f"--- DEBUG: argparse raised SystemExit (exit code: {e.code}) ---")

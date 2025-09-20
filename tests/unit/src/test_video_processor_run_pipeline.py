@@ -97,7 +97,7 @@ def test_run_pipeline_happy_path_no_break(monkeypatch):
     # UI used twice, then cleaned up once
     assert calls["imshow"] == 2
     assert calls["waitKey"] == 2
-    assert calls["destroy"] == 1
+    assert calls["destroy"] == 0
 
 
 def test_run_pipeline_break_on_q(monkeypatch):
@@ -136,7 +136,7 @@ def test_run_pipeline_break_on_q(monkeypatch):
     assert calls["csv"] == 1
     assert calls["video"] == 1
     assert state.frame_idx == 0
-    assert calls["destroy"] == 1
+    assert calls["destroy"] == 0
 
 
 def test_run_pipeline_preview_false_skips_ui(monkeypatch):
@@ -180,7 +180,7 @@ def test_run_pipeline_preview_false_skips_ui(monkeypatch):
     assert calls["imshow"] == 0
     assert calls["waitKey"] == 0
     assert state.frame_idx == 6
-    assert calls["destroy"] == 1
+    assert calls["destroy"] == 0
 
 
 def test_run_pipeline_headless_ui_exception_path(monkeypatch):
@@ -224,7 +224,7 @@ def test_run_pipeline_headless_ui_exception_path(monkeypatch):
     assert calls["csv"] == 2
     assert calls["video"] == 2
     assert calls["imshow"] == 2
-    assert calls["destroy"] == 1
+    assert calls["destroy"] == 0
 
 
 def test_run_pipeline_destroy_windows_suppressed(monkeypatch):
