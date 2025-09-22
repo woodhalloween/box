@@ -1,7 +1,6 @@
 import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 
-
 # MediaPipe landmark component indices for readability
 LANDMARK_X = 0
 LANDMARK_Y = 1
