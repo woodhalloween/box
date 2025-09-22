@@ -2,6 +2,13 @@ import numpy as np
 from mediapipe.python.solutions.pose import PoseLandmark
 
 
+# MediaPipe landmark component indices for readability
+LANDMARK_X = 0
+LANDMARK_Y = 1
+LANDMARK_Z = 2
+LANDMARK_VISIBILITY = 3
+
+
 class HandRaiseDetector:
     """
     姿勢ランドマークから手の挙上状態を検出するクラス。
@@ -95,8 +102,11 @@ class HandRaiseDetector:
         wrist_landmark = landmarks[wrist_idx]
 
         # 信頼度が閾値未満の場合は判定しない
-        if shoulder_landmark[3] < self.visibility_threshold or wrist_landmark[3] < self.visibility_threshold:
+        if (
+            shoulder_landmark[LANDMARK_VISIBILITY] < self.visibility_threshold
+            or wrist_landmark[LANDMARK_VISIBILITY] < self.visibility_threshold
+        ):
             return False
 
         # 手首のy座標が肩のy座標より上にあるか（画像座標系なので値が小さいか）
-        return wrist_landmark[1] < shoulder_landmark[1]
+        return wrist_landmark[LANDMARK_Y] < shoulder_landmark[LANDMARK_Y]

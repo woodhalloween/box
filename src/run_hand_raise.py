@@ -1,6 +1,7 @@
 import argparse
 import csv
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -15,6 +16,69 @@ from src.drawing_utils import (
     draw_landmarks,
 )
 from src.pose_estimator import PoseEstimator
+
+
+@dataclass
+class RuntimeSettings:
+    visibility_threshold: float = 0.5
+    min_consecutive_frames: int = 5
+    dwell_stay_threshold: float = 10.0
+    dwell_confidence_threshold: float = 0.5
+    dwell_spike_threshold: float = 1.5
+    dwell_stability_threshold: float = 50.0
+    dwell_grace_period: float = 1.5
+    dwell_use_normalization: bool = False
+    dwell_normalization_base: str = "torso"
+
+
+def load_runtime_settings(config_path: str) -> RuntimeSettings:
+    """Load runtime settings from config if available, otherwise return defaults."""
+    settings = RuntimeSettings()
+
+    try:
+        config = AppConfig(config_path)
+    except FileNotFoundError:
+        print("警告: config.yamlが見つかりません。デフォルト値を使用します。")
+        return settings
+
+    settings.visibility_threshold = config.getfloat(
+        "hand_raise.visibility_threshold",
+        settings.visibility_threshold,
+    )
+    settings.min_consecutive_frames = config.getint(
+        "hand_raise.min_consecutive_frames",
+        settings.min_consecutive_frames,
+    )
+    settings.dwell_stay_threshold = config.getfloat(
+        "dwell_time_detector.stay_threshold_sec",
+        settings.dwell_stay_threshold,
+    )
+    settings.dwell_confidence_threshold = config.getfloat(
+        "dwell_time_detector.confidence_threshold",
+        settings.dwell_confidence_threshold,
+    )
+    settings.dwell_spike_threshold = config.getfloat(
+        "dwell_time_detector.advanced_detection.spike_threshold",
+        settings.dwell_spike_threshold,
+    )
+    settings.dwell_stability_threshold = config.getfloat(
+        "dwell_time_detector.advanced_detection.stability_threshold_px",
+        settings.dwell_stability_threshold,
+    )
+    settings.dwell_grace_period = config.getfloat(
+        "dwell_time_detector.advanced_detection.grace_period_sec",
+        settings.dwell_grace_period,
+    )
+    settings.dwell_use_normalization = config.getboolean(
+        "dwell_time_detector.use_normalization",
+        settings.dwell_use_normalization,
+    )
+    settings.dwell_normalization_base = config.get(
+        "dwell_time_detector.normalization_base",
+        settings.dwell_normalization_base,
+    )
+
+    return settings
 
 
 def main():
@@ -70,48 +134,7 @@ def main():
         display_window = True
 
     # --- 1. 初期化フェーズ ---
-    visibility_threshold = 0.5
-    min_consecutive_frames = 5
-    dwell_stay_threshold = 10.0
-    dwell_confidence_threshold = 0.5
-    dwell_spike_threshold = 1.5
-    dwell_stability_threshold = 50.0
-    dwell_grace_period = 1.5
-    dwell_use_normalization = False
-    dwell_normalization_base = "torso"
-
-    try:
-        config = AppConfig("config.yaml")
-    except FileNotFoundError:
-        print("警告: config.yamlが見つかりません。デフォルト値を使用します。")
-    else:
-        visibility_threshold = config.getfloat("hand_raise.visibility_threshold", visibility_threshold)
-        min_consecutive_frames = config.getint("hand_raise.min_consecutive_frames", min_consecutive_frames)
-        dwell_stay_threshold = config.getfloat("dwell_time_detector.stay_threshold_sec", dwell_stay_threshold)
-        dwell_confidence_threshold = config.getfloat(
-            "dwell_time_detector.confidence_threshold",
-            dwell_confidence_threshold,
-        )
-        dwell_spike_threshold = config.getfloat(
-            "dwell_time_detector.advanced_detection.spike_threshold",
-            dwell_spike_threshold,
-        )
-        dwell_stability_threshold = config.getfloat(
-            "dwell_time_detector.advanced_detection.stability_threshold_px",
-            dwell_stability_threshold,
-        )
-        dwell_grace_period = config.getfloat(
-            "dwell_time_detector.advanced_detection.grace_period_sec",
-            dwell_grace_period,
-        )
-        dwell_use_normalization = config.getboolean(
-            "dwell_time_detector.use_normalization",
-            dwell_use_normalization,
-        )
-        dwell_normalization_base = config.get(
-            "dwell_time_detector.normalization_base",
-            dwell_normalization_base,
-        )
+    settings = load_runtime_settings("config.yaml")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -129,17 +152,17 @@ def main():
     # モジュールのインスタンス化
     pose_estimator = PoseEstimator()
     hand_raise_detector = HandRaiseDetector(
-        visibility_threshold=visibility_threshold,
-        min_consecutive_frames=min_consecutive_frames,
+        visibility_threshold=settings.visibility_threshold,
+        min_consecutive_frames=settings.min_consecutive_frames,
     )
     dwell_time_detector = DwellTimeDetector(
-        stay_threshold_sec=dwell_stay_threshold,
-        confidence_threshold=dwell_confidence_threshold,
-        spike_threshold=dwell_spike_threshold,
-        stability_threshold_px=dwell_stability_threshold,
-        grace_period_sec=dwell_grace_period,
-        use_normalization=dwell_use_normalization,
-        normalization_base=str(dwell_normalization_base),
+        stay_threshold_sec=settings.dwell_stay_threshold,
+        confidence_threshold=settings.dwell_confidence_threshold,
+        spike_threshold=settings.dwell_spike_threshold,
+        stability_threshold_px=settings.dwell_stability_threshold,
+        grace_period_sec=settings.dwell_grace_period,
+        use_normalization=settings.dwell_use_normalization,
+        normalization_base=str(settings.dwell_normalization_base),
     )
 
     cap = cv2.VideoCapture(str(input_path))
