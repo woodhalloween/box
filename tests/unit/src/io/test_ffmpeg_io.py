@@ -66,6 +66,11 @@ def _install_popen(monkeypatch, fake_proc):
     monkeypatch.setattr(m.subprocess, "Popen", _fake_popen)
 
 
+def _indexes(cmd, token):
+    # helper: return all indexes where token appears
+    return [i for i, t in enumerate(cmd) if t == token]
+
+
 # -------- Tests for _build_ffmpeg_cmd --------
 
 
@@ -109,6 +114,100 @@ def test_build_ffmpeg_cmd_gray_no_scaling_no_fps():
     # Input URL preserved
     idx_i = cmd.index("-i")
     assert cmd[idx_i + 1].startswith("rtsp://")
+
+
+# -------- Tests for macOS device options (Untested Part) --------
+
+
+def test_build_ffmpeg_cmd_darwin_device_adds_framerate_and_video_size(monkeypatch):
+    # Simulate macOS + numeric input device ("0")
+    monkeypatch.setattr(m.sys, "platform", "darwin")
+
+    cmd = m._build_ffmpeg_cmd(
+        ffmpeg_input="0",
+        width=640,
+        height=480,
+        fps=29.6,  # rounds to 30 for -framerate
+        is_color=True,
+        additional_input_args=None,
+    )
+
+    # Both capture-specific options must exist and be BEFORE "-i"
+    idx_i = cmd.index("-i")
+    assert "-framerate" in cmd and "-video_size" in cmd
+    idx_fps = cmd.index("-framerate")
+    idx_vs = cmd.index("-video_size")
+    assert idx_fps < idx_i and idx_vs < idx_i
+    assert cmd[idx_fps + 1] == "30"  # rounded
+    assert cmd[idx_vs + 1] == "640x480"
+
+    # Output vf still uses the original float (not rounded)
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf == "scale=640:480,fps=29.6"
+
+
+def test_build_ffmpeg_cmd_darwin_device_only_framerate_when_no_size(monkeypatch):
+    monkeypatch.setattr(m.sys, "platform", "darwin")
+
+    cmd = m._build_ffmpeg_cmd(
+        ffmpeg_input="0",
+        width=0,  # size not both positive → no -video_size
+        height=480,
+        fps=25.0,
+        is_color=False,
+    )
+
+    idx_i = cmd.index("-i")
+    # framerate present and before -i
+    assert "-framerate" in cmd
+    assert cmd.index("-framerate") < idx_i
+    assert cmd[cmd.index("-framerate") + 1] == "25"
+
+    # video_size absent
+    assert "-video_size" not in cmd
+
+    # vf should have fps only (no scale)
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf == "fps=25.0"
+
+
+def test_build_ffmpeg_cmd_darwin_device_only_video_size_when_fps_leq_zero(monkeypatch):
+    monkeypatch.setattr(m.sys, "platform", "darwin")
+
+    cmd = m._build_ffmpeg_cmd(
+        ffmpeg_input="0",
+        width=320,
+        height=240,
+        fps=0.0,  # not positive → no -framerate
+        is_color=True,
+    )
+
+    idx_i = cmd.index("-i")
+    # video_size present and before -i
+    assert "-video_size" in cmd
+    assert cmd.index("-video_size") < idx_i
+    assert cmd[cmd.index("-video_size") + 1] == "320x240"
+
+    # framerate absent
+    assert "-framerate" not in cmd
+
+    # vf should have scale only
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf == "scale=320:240"
+
+
+def test_build_ffmpeg_cmd_non_darwin_or_non_digit_device_adds_no_capture_options(monkeypatch):
+    # Case A: non-macOS platform → no capture options even if input is digit
+    monkeypatch.setattr(m.sys, "platform", "linux")
+    cmd_linux = m._build_ffmpeg_cmd(ffmpeg_input="0", width=640, height=480, fps=30.0, is_color=True)
+    assert "-framerate" not in cmd_linux
+    assert "-video_size" not in cmd_linux
+
+    # Case B: macOS but input is NOT a pure digit → no capture options
+    monkeypatch.setattr(m.sys, "platform", "darwin")
+    cmd_nondigit = m._build_ffmpeg_cmd(ffmpeg_input="camera0", width=640, height=480, fps=30.0, is_color=True)
+    assert "-framerate" not in cmd_nondigit
+    assert "-video_size" not in cmd_nondigit
 
 
 # -------- Tests for _ffmpeg_frames --------

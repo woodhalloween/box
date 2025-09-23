@@ -288,7 +288,20 @@ def _build_ffmpeg_cmd(
     >>> cmd[:6]
     ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', 'sample.mp4']
     """
+
     pix_fmt = "bgr24" if is_color else "gray"
+
+    # Input side: include framerate/size for camera
+    input_args = []
+    if additional_input_args:
+        input_args += additional_input_args
+    if sys.platform == "darwin" and ffmpeg_input.isdigit():
+        # Add capture-specific options
+        if fps > 0:
+            input_args += ["-framerate", str(int(round(fps)))]
+        if width > 0 and height > 0:
+            input_args += ["-video_size", f"{width}x{height}"]
+
     vf_parts = []
     if width > 0 and height > 0:
         vf_parts.append(f"scale={width}:{height}")
@@ -297,7 +310,6 @@ def _build_ffmpeg_cmd(
     vf = ",".join(vf_parts) if vf_parts else "null"
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-    if additional_input_args:
-        cmd += additional_input_args
+    cmd += input_args
     cmd += ["-i", ffmpeg_input, "-an", "-vf", vf, "-pix_fmt", pix_fmt, "-f", "rawvideo", "pipe:1"]
     return cmd
