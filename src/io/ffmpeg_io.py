@@ -1,64 +1,68 @@
+import os
 import subprocess
 import sys
 
 import cv2
 import numpy as np
 
+# ---------- NEW: portable helpers for camera capture ----------
 
-# --- NEW: small helper to build/read from FFmpeg pipe ---
-def _camera_input_args(os_name: str, device: str) -> list[str]:
+
+def _norm_os_key(os_name: str) -> str:
+    key = (os_name or "").lower()
+    if key.startswith("linux"):
+        return "linux"
+    if key.startswith("win"):
+        return "windows"
+    if key == "darwin":
+        return "darwin"
+    return key
+
+
+def _camera_capture_args(
+    os_name: str,
+    device: str,
+    width: int,
+    height: int,
+    fps: float,
+) -> list[str]:
     """
     Build FFmpeg *input-side* arguments for a webcam/capture device.
 
-    These flags are intended to appear BEFORE the token `-i <device>`.
-    They only define the input demuxer and buffering behavior. Resolution and
-    frame rate should be handled on the output side (e.g., via `-vf scale=...,fps=...`)
-    inside `_build_ffmpeg_cmd()`.
+    Always returned in the correct order to appear BEFORE `-i <device>`.
 
-    Parameters
-    ----------
-    os_name : str
-        Typically `sys.platform` (e.g., "linux", "linux2", "darwin", "win32").
-        Used to select the appropriate FFmpeg capture backend.
-    device : str
-        The exact token that will follow `-i`.
-        - Linux (v4l2): prefer an absolute path such as "/dev/video0".
-        - macOS (avfoundation): an index string like "0" or "0:0".
-        - Windows (dshow): a *named* device like "video=Integrated Camera"
-          (numeric indices are not supported by dshow).
-
-    Returns
-    -------
-    list[str]
-        Arguments to place BEFORE `-i <device>`.
-
-    Rationale
-    ---------
-    Keep input arguments minimal and portable:
-    - Select the capture backend (`-f ...`).
-    - Choose a sane default transport (e.g., `-input_format mjpeg` on v4l2 to reduce USB/CPU load).
-    - Increase input-side queues/buffers to reduce frame drops.
+    macOS (avfoundation):
+        ffmpeg -f avfoundation -thread_queue_size 4096 -framerate 30 -video_size 1280x720 -i "0"
+    Linux (v4l2):
+        ffmpeg -f v4l2 -thread_queue_size 4096 -input_format mjpeg -framerate 30 -video_size 1280x720 -i /dev/video0
+    Windows (dshow):
+        ffmpeg -f dshow -thread_queue_size 4096 -framerate 30 -video_size 1280x720 -i video="Integrated Camera"
     """
-    key = (os_name or "").lower()
+    key = _norm_os_key(os_name)
+    fr = str(int(round(fps))) if fps and fps > 0 else "30"
+    sz = f"{max(1, int(width))}x{max(1, int(height))}"
 
-    # Common: enlarge the input thread queue to mitigate drops when downstream is busy.
     common = ["-thread_queue_size", "4096"]
 
-    # Linux: v4l2 backend. MJPEG is a good default; switch to "yuyv422" if your device requires it.
-    if key.startswith("linux"):
-        return ["-f", "v4l2", "-input_format", "mjpeg", *common]
+    if key == "darwin":  # macOS
+        # device: "0", "0:", or a device name like "FaceTime HD Camera (Built-in)"
+        return ["-f", "avfoundation", *common, "-framerate", fr, "-video_size", sz]
 
-    # macOS: avfoundation backend. If you need to drive capture rate on input,
-    # pass `-framerate` from the caller; keep this function minimal.
-    if key == "darwin":
-        return ["-f", "avfoundation", *common]
+    if key == "linux":  # Linux
+        # Prefer MJPEG to lower USB/CPU load; change to yuyv422 if needed.
+        return ["-f", "v4l2", "-input_format", "mjpeg", *common, "-framerate", fr, "-video_size", sz]
 
-    # Windows: dshow backend. Use named devices (e.g., "video=..."). Increase realtime buffer.
-    if key.startswith("win"):
-        return ["-f", "dshow", "-rtbufsize", "256M", *common]
+    if key == "windows":  # Windows
+        # dshow requires a *named* device: video="Integrated Camera"
+        return ["-f", "dshow", *common, "-framerate", fr, "-video_size", sz]
 
-    # Fallback for unknown platforms: return only common safety flags.
+    # Fallback: just queue size (better than nothing)
     return [*common]
+
+
+def _camera_backend_name(os_name: str) -> str:
+    key = _norm_os_key(os_name)
+    return {"darwin": "avfoundation", "linux": "v4l2", "windows": "dshow"}.get(key, "unknown")
 
 
 def make_frame_iter(
@@ -135,10 +139,15 @@ def make_frame_iter(
     if input_mode == "ffmpeg-file":
         cmd = _build_ffmpeg_cmd(ffmpeg_input or "", width, height, fps, is_color, add_args)
         return _ffmpeg_frames(cmd, width, height, is_color, fps)
+
     if input_mode == "ffmpeg-camera":
-        cam_args = _camera_input_args(sys.platform, ffmpeg_input or "0")
-        cmd = _build_ffmpeg_cmd(ffmpeg_input or "0", width, height, fps, is_color, (add_args or []) + cam_args)
+        dev = ffmpeg_input or "0"
+        cam_args = _camera_capture_args(sys.platform, dev, width, height, fps)
+        # Ensure camera-specific args come BEFORE -i <device>
+        input_args = (add_args or []) + cam_args
+        cmd = _build_ffmpeg_cmd(dev, width, height, fps, is_color, input_args)
         return _ffmpeg_frames(cmd, width, height, is_color, fps)
+
     raise ValueError(f"unsupported input_mode={input_mode!r}")
 
 
@@ -291,17 +300,6 @@ def _build_ffmpeg_cmd(
 
     pix_fmt = "bgr24" if is_color else "gray"
 
-    # Input side: include framerate/size for camera
-    input_args = []
-    if additional_input_args:
-        input_args += additional_input_args
-    if sys.platform == "darwin" and ffmpeg_input.isdigit():
-        # Add capture-specific options
-        if fps > 0:
-            input_args += ["-framerate", str(int(round(fps)))]
-        if width > 0 and height > 0:
-            input_args += ["-video_size", f"{width}x{height}"]
-
     vf_parts = []
     if width > 0 and height > 0:
         vf_parts.append(f"scale={width}:{height}")
@@ -310,6 +308,12 @@ def _build_ffmpeg_cmd(
     vf = ",".join(vf_parts) if vf_parts else "null"
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-    cmd += input_args
+    if additional_input_args:
+        cmd += additional_input_args
     cmd += ["-i", ffmpeg_input, "-an", "-vf", vf, "-pix_fmt", pix_fmt, "-f", "rawvideo", "pipe:1"]
+
+    # Optional: print the exact command when debugging
+    if os.environ.get("DEBUG_FFMPEG") == "1":
+        print("FFmpeg CMD:", " ".join(str(x) for x in cmd))
+
     return cmd

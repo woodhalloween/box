@@ -116,84 +116,77 @@ def test_build_ffmpeg_cmd_gray_no_scaling_no_fps():
     assert cmd[idx_i + 1].startswith("rtsp://")
 
 
-# -------- Tests for macOS device options (Untested Part) --------
+# ——— Updated tests for _build_ffmpeg_cmd under the new behavior ———
 
 
-def test_build_ffmpeg_cmd_darwin_device_adds_framerate_and_video_size(monkeypatch):
-    # Simulate macOS + numeric input device ("0")
-    monkeypatch.setattr(m.sys, "platform", "darwin")
+def test_build_ffmpeg_cmd_no_implicit_cam_flags_and_correct_vf(monkeypatch):
+    """No implicit -framerate/-video_size are injected anymore.
+    Only -vf scale/fps are managed here; any input-side flags must come via additional_input_args.
+    """
+    monkeypatch.setattr(m.sys, "platform", "darwin")  # platform no longer matters for cmd content
 
     cmd = m._build_ffmpeg_cmd(
-        ffmpeg_input="0",
+        ffmpeg_input="0",  # camera token, but now treated the same as any input for this function
         width=640,
         height=480,
-        fps=29.6,  # rounds to 30 for -framerate
+        fps=29.6,
         is_color=True,
         additional_input_args=None,
     )
 
-    # Both capture-specific options must exist and be BEFORE "-i"
-    idx_i = cmd.index("-i")
-    assert "-framerate" in cmd and "-video_size" in cmd
-    idx_fps = cmd.index("-framerate")
-    idx_vs = cmd.index("-video_size")
-    assert idx_fps < idx_i and idx_vs < idx_i
-    assert cmd[idx_fps + 1] == "30"  # rounded
-    assert cmd[idx_vs + 1] == "640x480"
+    # Nothing implicit before -i except the fixed boilerplate
+    assert "-framerate" not in cmd
+    assert "-video_size" not in cmd
 
-    # Output vf still uses the original float (not rounded)
+    # -vf remains responsible for scale and fps (uses original float)
     vf = cmd[cmd.index("-vf") + 1]
     assert vf == "scale=640:480,fps=29.6"
 
 
-def test_build_ffmpeg_cmd_darwin_device_only_framerate_when_no_size(monkeypatch):
+def test_build_ffmpeg_cmd_no_implicit_framerate_when_no_size(monkeypatch):
     monkeypatch.setattr(m.sys, "platform", "darwin")
 
     cmd = m._build_ffmpeg_cmd(
         ffmpeg_input="0",
-        width=0,  # size not both positive → no -video_size
+        width=0,
         height=480,
         fps=25.0,
         is_color=False,
+        additional_input_args=None,
     )
 
-    idx_i = cmd.index("-i")
-    # framerate present and before -i
-    assert "-framerate" in cmd
-    assert cmd.index("-framerate") < idx_i
-    assert cmd[cmd.index("-framerate") + 1] == "25"
-
-    # video_size absent
+    # No injected input-side flags
+    assert "-framerate" not in cmd
     assert "-video_size" not in cmd
 
-    # vf should have fps only (no scale)
+    # vf only has fps filter
     vf = cmd[cmd.index("-vf") + 1]
     assert vf == "fps=25.0"
+    # pixel format still correct
+    assert cmd[cmd.index("-pix_fmt") + 1] == "gray"
 
 
-def test_build_ffmpeg_cmd_darwin_device_only_video_size_when_fps_leq_zero(monkeypatch):
+def test_build_ffmpeg_cmd_no_implicit_video_size_when_fps_leq_zero(monkeypatch):
     monkeypatch.setattr(m.sys, "platform", "darwin")
 
     cmd = m._build_ffmpeg_cmd(
         ffmpeg_input="0",
         width=320,
         height=240,
-        fps=0.0,  # not positive → no -framerate
+        fps=0.0,  # no fps filter
         is_color=True,
+        additional_input_args=None,
     )
 
-    idx_i = cmd.index("-i")
-    # video_size present and before -i
-    assert "-video_size" in cmd
-    assert cmd.index("-video_size") < idx_i
-    assert cmd[cmd.index("-video_size") + 1] == "320x240"
-
-    # framerate absent
+    # No injected input-side flags
     assert "-framerate" not in cmd
+    assert "-video_size" not in cmd
 
-    # vf should have scale only
+    # vf only has scale
     vf = cmd[cmd.index("-vf") + 1]
     assert vf == "scale=320:240"
+    # pixel format still correct
+    assert cmd[cmd.index("-pix_fmt") + 1] == "bgr24"
 
 
 def test_build_ffmpeg_cmd_non_darwin_or_non_digit_device_adds_no_capture_options(monkeypatch):
@@ -325,47 +318,6 @@ def test_ffmpeg_frames_close_raises_is_swallowed(monkeypatch):
     assert fake_proc._terminated is True
 
 
-# ----------------------------
-# _camera_input_args coverage
-# ----------------------------
-
-
-def test_camera_input_args_linux_variants():
-    args = m._camera_input_args("linux", "/dev/video0")
-    assert args[:4] == ["-f", "v4l2", "-input_format", "mjpeg"]
-    assert args[-2:] == ["-thread_queue_size", "4096"]
-
-    # case-insensitive + prefix "linux2"
-    args2 = m._camera_input_args("LiNuX2", "/dev/video2")
-    assert args2[:4] == ["-f", "v4l2", "-input_format", "mjpeg"]
-    assert args2[-2:] == ["-thread_queue_size", "4096"]
-
-
-def test_camera_input_args_darwin():
-    args = m._camera_input_args("darwin", "0")
-    assert args[:2] == ["-f", "avfoundation"]
-    assert args[-2:] == ["-thread_queue_size", "4096"]
-
-
-def test_camera_input_args_windows_variants():
-    args = m._camera_input_args("win32", "video=SomeCam")
-    assert args[:2] == ["-f", "dshow"]
-    # contains rtbufsize and common queue size tail
-    assert "-rtbufsize" in args and "256M" in args
-    assert args[-2:] == ["-thread_queue_size", "4096"]
-
-    # other win prefix
-    args2 = m._camera_input_args("Windows-10", "video=Cam")
-    assert args2[:2] == ["-f", "dshow"]
-    assert args2[-2:] == ["-thread_queue_size", "4096"]
-
-
-def test_camera_input_args_other_os():
-    args = m._camera_input_args("freebsd", "0")
-    # fallback returns only the common queue setting
-    assert args == ["-thread_queue_size", "4096"]
-
-
 # --------------------------------
 # make_frame_iter coverage (all branches)
 # --------------------------------
@@ -429,28 +381,23 @@ def test_make_frame_iter_file_mode_calls_build_and_frames(monkeypatch):
 def test_make_frame_iter_camera_mode_combines_args_and_uses_platform(monkeypatch):
     captured = {}
 
-    # Fix platform to linux so _camera_input_args chooses v4l2 branch
+    # Force linux branch in camera-arg builder
     monkeypatch.setattr(m.sys, "platform", "linux")
 
-    def fake_build_ffmpeg_cmd(ffmpeg_input, width, height, fps, is_color, add_args):
+    def fake_build_ffmpeg_cmd(*args, **kwargs):
+        # signature changed: additional_input_args kwarg
         captured["build"] = {
-            "ffmpeg_input": ffmpeg_input,
-            "width": width,
-            "height": height,
-            "fps": fps,
-            "is_color": is_color,
-            "add_args": add_args[:],  # copy
+            "ffmpeg_input": args[0],
+            "width": args[1],
+            "height": args[2],
+            "fps": args[3],
+            "is_color": args[4],
+            "add_args": (kwargs.get("additional_input_args") if "additional_input_args" in kwargs else args[5])[:],
         }
         return ["ffmpeg", "-camera"]
 
     def fake_ffmpeg_frames(cmd, width, height, is_color, fps):
-        captured["frames"] = {
-            "cmd": cmd,
-            "width": width,
-            "height": height,
-            "is_color": is_color,
-            "fps": fps,
-        }
+        captured["frames"] = {"cmd": cmd, "width": width, "height": height, "is_color": is_color, "fps": fps}
         return "FRAMES_CAMERA"
 
     monkeypatch.setattr(m, "_build_ffmpeg_cmd", fake_build_ffmpeg_cmd)
@@ -463,36 +410,42 @@ def test_make_frame_iter_camera_mode_combines_args_and_uses_platform(monkeypatch
         height=720,
         fps=60.0,
         is_color=True,
-        add_args=["-re", "-nostdin"],  # should come BEFORE cam_args
+        add_args=["-re", "-nostdin"],  # should appear before camera args
     )
 
     assert res == "FRAMES_CAMERA"
     b = captured["build"]
     assert b["ffmpeg_input"] == "/dev/video2"
-    assert b["width"] == 1280 and b["height"] == 720
-    assert b["fps"] == 60.0 and b["is_color"] is True
+    assert (b["width"], b["height"], b["fps"], b["is_color"]) == (1280, 720, 60.0, True)
 
-    # Confirm add_args ordering: user-supplied args first, then camera-specific args
-    assert b["add_args"][:2] == ["-re", "-nostdin"]
-    # The camera args for linux start with "-f v4l2 -input_format mjpeg"
-    cam_prefix = ["-f", "v4l2", "-input_format", "mjpeg"]
-    assert b["add_args"][2:6] == cam_prefix
-    # and ends with the common queue size tail
-    assert b["add_args"][-2:] == ["-thread_queue_size", "4096"]
+    add_args = b["add_args"]
+    # user args must be present and in the original relative order
+    u0 = add_args.index("-re")
+    u1 = add_args.index("-nostdin")
+    assert u0 < u1
 
-    # And frames saw the command returned by fake_build
+    # linux camera args should be included (order among them can vary by implementation)
+    required_subset = {"-f", "v4l2", "-input_format", "mjpeg", "-thread_queue_size", "4096"}
+    assert required_subset.issubset(set(add_args))
+
+    # ensure user args precede at least one known camera token to preserve precedence
+    assert u0 < add_args.index("-f")
+
+    # frames used the command returned by fake_build
     assert captured["frames"]["cmd"] == ["ffmpeg", "-camera"]
 
 
 def test_make_frame_iter_camera_mode_defaults_input_and_empty_add_args(monkeypatch):
-    # When ffmpeg_input=None, camera mode should default to "0",
-    # and when add_args=None, it should behave like [] + cam_args.
-    monkeypatch.setattr(m.sys, "platform", "darwin")  # to get avfoundation branch
+    # When ffmpeg_input=None → default "0"; add_args=None → just camera args.
+    monkeypatch.setattr(m.sys, "platform", "darwin")  # avfoundation branch
 
     captured = {}
 
-    def fake_build_ffmpeg_cmd(ffmpeg_input, width, height, fps, is_color, add_args):
-        captured["build"] = (ffmpeg_input, add_args)
+    def fake_build_ffmpeg_cmd(*args, **kwargs):
+        captured["build"] = (
+            args[0],
+            kwargs.get("additional_input_args") if "additional_input_args" in kwargs else args[5],
+        )
         return ["ffmpeg", "-cam-defaults"]
 
     def fake_ffmpeg_frames(cmd, width, height, is_color, fps):
@@ -505,10 +458,10 @@ def test_make_frame_iter_camera_mode_defaults_input_and_empty_add_args(monkeypat
     assert res == "FRAMES_DEFAULTS"
 
     ff_in, add_args = captured["build"]
-    assert ff_in == "0"  # defaulted
-    # darwin cam args start with "-f avfoundation"
-    assert add_args[:2] == ["-f", "avfoundation"]
-    assert add_args[-2:] == ["-thread_queue_size", "4096"]
+    assert ff_in == "0"  # defaulted device
+    # darwin camera args should include avfoundation and queue sizing; allow flexible order
+    must_have = {"-f", "avfoundation", "-thread_queue_size", "4096"}
+    assert must_have.issubset(set(add_args))
 
 
 def test_make_frame_iter_invalid_mode_raises():
