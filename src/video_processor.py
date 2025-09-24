@@ -125,7 +125,7 @@ class VideoProcessor:
         if self.output_csv_path is None:
             self.output_csv_path = f"output/{p.stem}_analysis_{timestamp_str}.csv"
         if self.output_video_path is None:
-            self.output_video_path = f"output/{p.stem}_output_{timestamp_str}.csv"
+            self.output_video_path = f"output/{p.stem}_output_{timestamp_str}.mp4"
         Path(self.output_csv_path).parent.mkdir(parents=True, exist_ok=True)
         Path(self.output_video_path).parent.mkdir(parents=True, exist_ok=True)
 
