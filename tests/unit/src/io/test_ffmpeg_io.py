@@ -468,3 +468,200 @@ def test_make_frame_iter_invalid_mode_raises():
     with pytest.raises(ValueError) as ei:
         m.make_frame_iter("unknown-mode", ffmpeg_input="x")
     assert "unsupported input_mode" in str(ei.value)
+
+
+# -------- Tests for _norm_os_key --------
+
+
+def test_norm_os_key_windows():
+    """Test _norm_os_key function lines 15-16 (Windows case)."""
+    # Test various Windows platform strings
+    assert m._norm_os_key("win") == "windows"
+    assert m._norm_os_key("windows") == "windows"
+    assert m._norm_os_key("win32") == "windows"
+    assert m._norm_os_key("win64") == "windows"
+    assert m._norm_os_key("WIN") == "windows"
+    assert m._norm_os_key("Windows") == "windows"
+
+
+def test_norm_os_key_fallback():
+    """Test _norm_os_key function line 19 (fallback case)."""
+    # Test fallback case for unrecognized OS names
+    assert m._norm_os_key("unknown") == "unknown"
+    assert m._norm_os_key("freebsd") == "freebsd"
+    assert m._norm_os_key("") == ""
+    assert m._norm_os_key(None) == ""
+    assert m._norm_os_key("some_random_os") == "some_random_os"
+
+
+# -------- Tests for _camera_capture_args --------
+
+
+def test_camera_capture_args_windows():
+    """Test _camera_capture_args function lines 55-60 (Windows case)."""
+    args = m._camera_capture_args("windows", "Integrated Camera", 1920, 1080, 30.0)
+
+    # Check that Windows-specific args are present
+    assert "-f" in args
+    assert "dshow" in args
+    assert "-thread_queue_size" in args
+    assert "4096" in args
+    assert "-framerate" in args
+    assert "30" in args
+    assert "-video_size" in args
+    assert "1920x1080" in args
+
+    # Verify the order: -f dshow should come before other args
+    f_idx = args.index("-f")
+    dshow_idx = args.index("dshow")
+    assert f_idx + 1 == dshow_idx
+
+
+def test_camera_capture_args_fallback():
+    """Test _camera_capture_args function lines 59-60 (fallback case)."""
+    # Test fallback case for unrecognized OS
+    args = m._camera_capture_args("unknown_os", "device", 640, 480, 25.0)
+
+    # Should only return common args (thread_queue_size)
+    assert args == ["-thread_queue_size", "4096"]
+
+    # Test with None OS name
+    args_none = m._camera_capture_args(None, "device", 640, 480, 25.0)
+    assert args_none == ["-thread_queue_size", "4096"]
+
+    # Test with empty OS name
+    args_empty = m._camera_capture_args("", "device", 640, 480, 25.0)
+    assert args_empty == ["-thread_queue_size", "4096"]
+
+
+# -------- Tests for _camera_backend_name --------
+
+
+def test_camera_backend_name_darwin():
+    """Test _camera_backend_name function for macOS."""
+    assert m._camera_backend_name("darwin") == "avfoundation"
+    assert m._camera_backend_name("Darwin") == "avfoundation"
+
+
+def test_camera_backend_name_linux():
+    """Test _camera_backend_name function for Linux."""
+    assert m._camera_backend_name("linux") == "v4l2"
+    assert m._camera_backend_name("Linux") == "v4l2"
+    assert m._camera_backend_name("linux2") == "v4l2"
+
+
+def test_camera_backend_name_windows():
+    """Test _camera_backend_name function for Windows."""
+    assert m._camera_backend_name("win") == "dshow"
+    assert m._camera_backend_name("windows") == "dshow"
+    assert m._camera_backend_name("win32") == "dshow"
+    assert m._camera_backend_name("win64") == "dshow"
+
+
+def test_camera_backend_name_fallback():
+    """Test _camera_backend_name function fallback case."""
+    # Test fallback case for unrecognized OS names
+    assert m._camera_backend_name("unknown") == "unknown"
+    assert m._camera_backend_name("freebsd") == "unknown"
+    assert m._camera_backend_name("") == "unknown"
+    assert m._camera_backend_name(None) == "unknown"
+    assert m._camera_backend_name("some_random_os") == "unknown"
+
+
+# -------- Tests for _build_ffmpeg_cmd debug functionality --------
+
+
+def test_build_ffmpeg_cmd_debug_print_enabled(monkeypatch, capsys):
+    """Test _build_ffmpeg_cmd function lines 316-317 (debug print when DEBUG_FFMPEG=1)."""
+    # Set DEBUG_FFMPEG environment variable to "1"
+    monkeypatch.setenv("DEBUG_FFMPEG", "1")
+
+    # Call _build_ffmpeg_cmd
+    cmd = m._build_ffmpeg_cmd(  # noqa: F841
+        ffmpeg_input="test.mp4", width=640, height=480, fps=30.0, is_color=True, additional_input_args=None
+    )
+
+    # Capture the printed output
+    captured = capsys.readouterr()
+
+    # Verify the debug message was printed
+    assert "FFmpeg CMD:" in captured.out
+    assert "test.mp4" in captured.out
+    assert "ffmpeg" in captured.out
+    assert "-hide_banner" in captured.out
+    assert "-loglevel" in captured.out
+    assert "error" in captured.out
+    assert "-i" in captured.out
+    assert "-an" in captured.out
+    assert "-vf" in captured.out
+    assert "scale=640:480,fps=30.0" in captured.out
+    assert "-pix_fmt" in captured.out
+    assert "bgr24" in captured.out
+    assert "-f" in captured.out
+    assert "rawvideo" in captured.out
+    assert "pipe:1" in captured.out
+
+
+def test_build_ffmpeg_cmd_debug_print_disabled(monkeypatch, capsys):
+    """Test _build_ffmpeg_cmd function lines 316-317 (no debug print when DEBUG_FFMPEG!=1)."""
+    # Set DEBUG_FFMPEG environment variable to "0" (disabled)
+    monkeypatch.setenv("DEBUG_FFMPEG", "0")
+
+    # Call _build_ffmpeg_cmd
+    cmd = m._build_ffmpeg_cmd(  # noqa: F841
+        ffmpeg_input="test.mp4", width=640, height=480, fps=30.0, is_color=True, additional_input_args=None
+    )
+
+    # Capture the printed output
+    captured = capsys.readouterr()
+
+    # Verify no debug message was printed
+    assert "FFmpeg CMD:" not in captured.out
+    assert captured.out == ""
+
+
+def test_build_ffmpeg_cmd_debug_print_unset(monkeypatch, capsys):
+    """Test _build_ffmpeg_cmd function lines 316-317 (no debug print when DEBUG_FFMPEG unset)."""
+    # Ensure DEBUG_FFMPEG environment variable is not set
+    monkeypatch.delenv("DEBUG_FFMPEG", raising=False)
+
+    # Call _build_ffmpeg_cmd
+    cmd = m._build_ffmpeg_cmd(  # noqa: F841
+        ffmpeg_input="test.mp4", width=640, height=480, fps=30.0, is_color=True, additional_input_args=None
+    )
+
+    # Capture the printed output
+    captured = capsys.readouterr()
+
+    # Verify no debug message was printed
+    assert "FFmpeg CMD:" not in captured.out
+    assert captured.out == ""
+
+
+def test_build_ffmpeg_cmd_debug_print_with_additional_args(monkeypatch, capsys):
+    """Test _build_ffmpeg_cmd debug print with additional input arguments."""
+    # Set DEBUG_FFMPEG environment variable to "1"
+    monkeypatch.setenv("DEBUG_FFMPEG", "1")
+
+    # Call _build_ffmpeg_cmd with additional arguments
+    cmd = m._build_ffmpeg_cmd(  # noqa: F841
+        ffmpeg_input="rtsp://camera/stream",
+        width=1280,
+        height=720,
+        fps=25.0,
+        is_color=False,
+        additional_input_args=["-re", "-nostdin", "-thread_queue_size", "4096"],
+    )
+
+    # Capture the printed output
+    captured = capsys.readouterr()
+
+    # Verify the debug message was printed with additional args
+    assert "FFmpeg CMD:" in captured.out
+    assert "rtsp://camera/stream" in captured.out
+    assert "-re" in captured.out
+    assert "-nostdin" in captured.out
+    assert "-thread_queue_size" in captured.out
+    assert "4096" in captured.out
+    assert "scale=1280:720,fps=25.0" in captured.out
+    assert "gray" in captured.out  # pixel format for is_color=False
