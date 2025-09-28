@@ -95,7 +95,9 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
     monkeypatch.setattr("src.video_processor.setup_video_writer", fake_setup_video_writer)
 
     # Capture run_pipeline inputs
-    def fake_run_pipeline(frame_iter, *, csv_writer, video_writer, state, preview, window_name):
+    def fake_run_pipeline(
+        frame_iter, *, csv_writer, video_writer, state, preview, window_name, output_video_path=None, writer_fps=30.0
+    ):
         # Consume one item to make sure it's iterable
         first = next(frame_iter)
         calls["run"] = {
@@ -106,6 +108,8 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
             "window_name": window_name,
             "state_type": type(state).__name__,
             "disable_jp": state.disable_jp,
+            "output_video_path": output_video_path,
+            "writer_fps": writer_fps,
         }
 
     monkeypatch.setattr("src.video_processor.run_pipeline", fake_run_pipeline)
@@ -145,20 +149,20 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
     assert calls["ffmpeg"]["is_color"] is False
     assert calls["ffmpeg"]["add_args"] is None
 
-    # Sinks created and passed along
+    # CSV sink created
     assert calls["open"]["path"].endswith("out.csv")
     assert calls["csv"] == "CSV_WRITER_SENTINEL"
-    # process_video passes (height, width) into setup_video_writer in this codebase
-    assert calls["vid"]["arg"] == (222, 111)
-    assert str(calls["vid"]["path"]).endswith("out.mp4")
 
     # run_pipeline received the iterator and sinks, and disable_japanese flag
     assert calls["run"]["first"][0] == 0.0  # timestamp from fake iterator
     assert calls["run"]["csv_writer"] == "CSV_WRITER_SENTINEL"
-    assert calls["run"]["video_writer"] == "VIDEO_WRITER_SENTINEL"
+    # Lazy init policy: initial video_writer is None; writer is created inside run_pipeline on first frame
+    assert calls["run"]["video_writer"] is None
     assert calls["run"]["preview"] is False
     assert calls["run"]["window_name"] == "Integrated Analysis"
     assert calls["run"]["disable_jp"] is True  # from disable_japanese
+    assert calls["run"]["output_video_path"].endswith("out.mp4")
+    assert calls["run"]["writer_fps"] == 59.94
 
 
 def test_process_video_opencv_fallback_when_no_ffmpeg(monkeypatch):
