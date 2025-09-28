@@ -173,6 +173,7 @@ class TestMainFunction(unittest.TestCase):
 
         mock_args = MagicMock(
             video="test.mp4",
+            output_dir="output",  # Add the new output_dir parameter
             output_csv=None,
             output_video=None,
             disable_japanese=True,

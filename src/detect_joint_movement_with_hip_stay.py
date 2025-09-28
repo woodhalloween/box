@@ -589,6 +589,13 @@ def main():
     # ---- Output / preview ----
     parser.add_argument("--no-display", action="store_true", help="Disable preview window (headless/CI).")
     parser.add_argument("--disable-japanese", action="store_true", help="Disable Japanese labels in overlays.")
+    parser.add_argument(
+        "--output-dir", type=str, default="./data/output/", help="Output directory for CSV and video files."
+    )
+    parser.add_argument("--output-csv", type=str, default=None, help="Output CSV path (overrides auto-generated path).")
+    parser.add_argument(
+        "--output-video", type=str, default=None, help="Output video path (overrides auto-generated path)."
+    )
 
     # ---- FFmpeg/OpenCV capture geometry ----
     parser.add_argument("--width", type=int, default=1280, help="Output width for writer/pipeline.")
@@ -653,12 +660,23 @@ def main():
     args = parser.parse_args()
 
     # ---- Output paths ----
-    output_dir = "output"
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
-    video_basename = f"{os.path.splitext(os.path.basename(args.video))[0]}_integrated"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_video_path = os.path.join(output_dir, f"{video_basename}_output_{timestamp}.mp4")
-    output_csv_path = os.path.join(output_dir, f"{video_basename}_analysis_{timestamp}.csv")
+
+    # Use provided paths or generate auto paths
+    if args.output_csv:
+        output_csv_path = args.output_csv
+    else:
+        video_basename = f"{os.path.splitext(os.path.basename(args.video))[0]}_integrated"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_csv_path = os.path.join(output_dir, f"{video_basename}_analysis_{timestamp}.csv")
+
+    if args.output_video:
+        output_video_path = args.output_video
+    else:
+        video_basename = f"{os.path.splitext(os.path.basename(args.video))[0]}_integrated"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_video_path = os.path.join(output_dir, f"{video_basename}_output_{timestamp}.mp4")
 
     # ---- Call revised process_video ----
     process_video(
