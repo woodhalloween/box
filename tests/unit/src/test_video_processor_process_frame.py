@@ -88,7 +88,7 @@ def _mk_state(
     s.posture_monitor = _PostureMonitorFake(posture_alerts)
     s.dwell_time_detector = _DwellFake(dwell_alert)
     s.head_shake_detector = _HeadShakeFake(head_update_dict, head_alerts)
-    s.user_classifier = object()  # only passed through to draw function
+    s.user_classifier = object()  # only passed through to draw function (no update attr)
     s.frame_idx = frame_idx
     s.disable_jp = disable_jp
     s.last_landmarks = "UNTOUCHED"
@@ -195,3 +195,72 @@ def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
     assert calls["draw"][1] == ("analysis", True, False)  # disable_japanese=False
     assert calls["draw"][2][0] == "info"
     assert calls["draw"][2][2] is True and calls["draw"][2][3] == 1.23
+
+
+def test_process_frame_user_classifier_update_is_optional(monkeypatch):
+    """process_frame should not crash if state.user_classifier lacks 'update' (hasattr guard)."""
+    # Use state with user_classifier as plain object (no update method)
+    state = _mk_state(
+        landmarks=np.zeros((33, 4)),
+        analyzer_result={},
+        posture_alerts=[],
+        dwell_alert=None,
+        head_update_dict={},
+        head_alerts=[],
+    )
+
+    # Patch draw functions to simple pass-throughs
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame_in = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame_in, t=0.1, state=state)
+
+    # Should complete without exceptions and return the same frame
+    assert out_frame is frame_in
+
+
+def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch):
+    """
+    Ensure posture_monitor.update is called with (t, frame_idx, results)
+    and its returned alerts are appended to the outgoing alerts list.
+    """
+    # Capture posture call args
+    calls = {"pm": []}
+
+    class PM:
+        def update(self, t, frame_idx, results):
+            calls["pm"].append((t, frame_idx, dict(results)))
+            return ["ALERT_A", "ALERT_B"]
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({"K": {"angle": 12.3}})
+    s.posture_monitor = PM()
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.user_classifier = object()
+    s.frame_idx = 5
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=2.0, state=s)
+
+    assert out_frame is frame
+    assert alerts[:2] == ["ALERT_A", "ALERT_B"]
+    # Verify posture update args
+    assert calls["pm"][0][0] == 2.0
+    assert calls["pm"][0][1] == 5
+    assert "K" in calls["pm"][0][2]

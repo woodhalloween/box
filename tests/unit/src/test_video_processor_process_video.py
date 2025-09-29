@@ -236,6 +236,94 @@ def test_process_video_opencv_fallback_when_no_ffmpeg(monkeypatch):
     assert ts == [1.0, 2.0]
 
 
+def test_process_video_calls_run_pipeline_with_writer_args(monkeypatch):
+    """Ensure process_video forwards output_video_path and fps (writer_fps) into run_pipeline call."""
+    calls = {}
+
+    # Minimal frame source via OpenCV fallback path
+    monkeypatch.setattr("src.video_processor.make_frame_iter", None)
+
+    class FakeCap:
+        def __init__(self, path):
+            self._opened = True
+            self._count = 0
+
+        def isOpened(self):  # noqa: N802
+            return True
+
+        def read(self):
+            if self._count == 0:
+                self._count += 1
+                return True, np.zeros((2, 2, 3), dtype=np.uint8)
+            return False, None
+
+        def get(self, prop):
+            return 0.0
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr("src.video_processor.cv2.CAP_PROP_POS_MSEC", 0)
+    monkeypatch.setattr("src.video_processor.cv2.VideoCapture", FakeCap)
+
+    def fake_run_pipeline(frame_iter, **kwargs):
+        # consume the iterator
+        list(frame_iter)
+        calls.update(kwargs)
+
+    monkeypatch.setattr("src.video_processor.run_pipeline", fake_run_pipeline)
+
+    process_video(
+        video_path="v.avi",
+        output_csv_path=None,
+        output_video_path="/tmp/out.mp4",
+        disable_japanese=False,
+        input_mode=None,
+        fps=12.5,
+        preview=False,
+    )
+
+    assert calls.get("output_video_path") == "/tmp/out.mp4"
+    assert calls.get("writer_fps") == 12.5
+
+
+def test_process_video_uses_ffmpeg_when_available_and_input_mode_none(monkeypatch):
+    """When make_frame_iter is available and input_mode is None, it should use ffmpeg path."""
+    used = {"ffmpeg": False, "opencv": False}
+
+    def fake_make_frame_iter(input_mode, **kwargs):
+        used["ffmpeg"] = True
+
+        def _it():
+            yield 0.0, np.zeros((2, 2, 3), dtype=np.uint8)
+
+        return _it()
+
+    # Ensure ffmpeg path chosen
+    monkeypatch.setattr("src.video_processor.make_frame_iter", fake_make_frame_iter)
+
+    def fake_run_pipeline(frame_iter, **kwargs):
+        # consume
+        list(frame_iter)
+        # confirm ffmpeg branch by absence of cv2.VideoCapture usage
+        pass
+
+    monkeypatch.setattr("src.video_processor.run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr("builtins.open", lambda *a, **k: object())
+    monkeypatch.setattr("src.video_processor.setup_csv_writer", lambda *a, **k: object())
+
+    process_video(
+        video_path="file.mp4",
+        output_csv_path="/tmp/x.csv",
+        output_video_path=None,
+        disable_japanese=True,
+        input_mode=None,
+        preview=False,
+    )
+
+    assert used["ffmpeg"] is True
+
+
 def test_process_video_opencv_mode_even_when_ffmpeg_available(monkeypatch):
     """
     If input_mode is explicitly 'opencv-file', process_video must pick the OpenCV iterator,

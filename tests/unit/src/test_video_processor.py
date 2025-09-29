@@ -306,3 +306,114 @@ def test__process_frame_prints_notification_when_conditions_met(monkeypatch, cap
 
     expected = f"[{ts:.1f}s] 通知: 指定エリアのお客様対応をお願いします。"
     assert expected in captured.out
+
+
+def test___enter___fps_fallback_on_invalid(monkeypatch):
+    """__enter__ should fallback to fps=30.0 when CAP_PROP_FPS is invalid/non-castable."""
+    vp = _make_video_processor()
+
+    class FakeCap:
+        def __init__(self, path):
+            self._opened = True
+
+        def isOpened(self):  # noqa: N802
+            return True
+
+        def get(self, prop):
+            # Return a string that cannot be cast to float → triggers except and fallback branch
+            return "not-a-number"
+
+        def release(self):
+            pass
+
+    # Patch dependencies invoked in __enter__
+    monkeypatch.setattr("src.video_processor.cv2.VideoCapture", lambda p: FakeCap(p))
+    monkeypatch.setattr("src.video_processor.setup_video_writer", lambda *a, **k: SimpleNamespace(release=lambda: None))
+    monkeypatch.setattr("src.video_processor.setup_csv_writer", lambda f: object())
+    # open is a built-in, patch there (module does not expose open)
+    monkeypatch.setattr("builtins.open", mock_open())
+
+    with vp:
+        # After fallback, fps should be 30.0
+        assert getattr(vp, "fps", None) == 30.0
+
+
+def test__process_frame_initializes_writer_when_no_landmarks(monkeypatch):
+    """If landmarks is None and output_video_path is set, _process_frame must lazy-init writer with frame shape."""
+    vp = _make_video_processor()
+    vp.output_video_path = "out.mp4"
+    vp.fps = 24.0
+
+    # Pose returns None → triggers landmarks None path
+    vp.pose_estimator = SimpleNamespace(estimate=lambda fr: None)
+
+    # Spy for setup_video_writer
+    writes = {"called": False, "args": None, "write_count": 0}
+
+    class DummyWriter:
+        def write(self, frame):
+            writes["write_count"] += 1
+
+        def release(self):
+            pass
+
+    def fake_setup_video_writer(shape_hw, out_path, fps):
+        writes["called"] = True
+        writes["args"] = (shape_hw, out_path, fps)
+        return DummyWriter()
+
+    monkeypatch.setattr("src.video_processor.setup_video_writer", fake_setup_video_writer)
+
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)  # (h, w)
+    _ = vp._process_frame(frame, frame_count=0, timestamp=0.0)
+
+    assert writes["called"] is True
+    assert writes["args"] == ((100, 200), "out.mp4", 24.0)
+    # In the None-landmarks path, frame is written once
+    assert writes["write_count"] == 1
+
+
+def test__process_frame_initializes_and_writes_when_landmarks_present(monkeypatch):
+    """
+    When landmarks exist and writer is None,
+    _process_frame should create writer with actual frame shape and write once.
+    """
+    vp = _make_video_processor()
+    vp.output_video_path = "out2.mp4"
+    vp.fps = 30.0
+
+    # Minimal components to get through the main path
+    landmarks = np.zeros((33, 4))
+    vp.pose_estimator = SimpleNamespace(estimate=lambda fr: landmarks)
+    vp.analyzer = SimpleNamespace(analyze=lambda lm: {})
+    vp.user_classifier = SimpleNamespace(update=lambda *a, **k: [], get_current_alert=lambda: None)
+    vp.dwell_time_detector = SimpleNamespace(
+        update=lambda *a, **k: None, get_current_status=lambda: {"is_long_stay": False}, stay_info=None
+    )
+    vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
+    vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda *a, **k: [])
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.write_results_to_csv", lambda **kw: None)
+
+    calls = {"setup": None, "writes": 0}
+
+    class DummyWriter2:
+        def write(self, frame):
+            calls["writes"] += 1
+
+        def release(self):
+            pass
+
+    def fake_setup_video_writer2(shape_hw, out_path, fps):
+        calls["setup"] = (shape_hw, out_path, fps)
+        return DummyWriter2()
+
+    monkeypatch.setattr("src.video_processor.setup_video_writer", fake_setup_video_writer2)
+
+    frame = np.zeros((120, 160, 3), dtype=np.uint8)
+    _ = vp._process_frame(frame, frame_count=1, timestamp=0.5)
+
+    assert calls["setup"] == ((120, 160), "out2.mp4", 30.0)
+    assert calls["writes"] == 1
