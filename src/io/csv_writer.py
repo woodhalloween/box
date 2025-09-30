@@ -12,6 +12,7 @@ import numpy as np
 
 from ..analysis.dwell_time_detector import DwellTimeDetector
 from ..analysis.posture_monitor import PostureMonitor
+from ..analysis.user_classifier import UserClassifier
 from ..definitions import Angle, MovementState
 from ..head_shake_detector import HeadShakeDetector
 
@@ -68,6 +69,7 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
         "is_long_stay",
         "long_stay_alert",
         "hip_detector_state",
+        "user_classifier_alert",
     ]
     landmark_fieldnames = []
     for landmark in mp.solutions.pose.PoseLandmark:
@@ -91,6 +93,7 @@ def write_results_to_csv(
     head_shake_detector: HeadShakeDetector | None,
     head_shake_alerts: list[str] | None,
     landmarks: np.ndarray | None,
+    user_classifier: UserClassifier | None = None,
 ):
     """結果をCSVに書き込む"""
     row: dict[str, Any] = {"timestamp": timestamp, "frame_number": frame_number}
@@ -152,6 +155,10 @@ def write_results_to_csv(
             "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
         }
     )
+
+    # User classifier alert
+    user_classifier_alert = user_classifier.get_current_alert() if user_classifier else None
+    row["user_classifier_alert"] = user_classifier_alert or ""
 
     if landmarks is not None:
         for landmark in mp.solutions.pose.PoseLandmark:

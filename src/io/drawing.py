@@ -81,7 +81,11 @@ def draw_japanese_text(
 
 
 def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
-    """骨格を描画する"""
+    """Draw skeleton landmarks and connections onto the image."""
+    # Ensure the image is writable
+    if not image.flags.writeable:
+        image = image.copy()
+
     h, w, _ = image.shape
     for landmark in landmarks:
         x, y = int(landmark[0] * w), int(landmark[1] * h)

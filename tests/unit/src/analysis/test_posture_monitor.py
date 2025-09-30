@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import fields
 
-from src.analysis.posture_monitor import PostureMonitor
+from src.analysis.posture_monitor import (
+    PostureMonitor,
+    PostureSnapshot
+)
 from src.definitions import Angle, MovementState
 
 
@@ -136,3 +140,19 @@ class TestPostureMonitor(unittest.TestCase):
         # Directly call _check_for_alerts with arbitrary timestamp
         alerts = self.monitor._check_for_alerts(current_time=10.0)
         self.assertEqual(alerts, [])
+
+
+def test_posture_snapshot_dataclass():
+    """PostureSnapshotデータクラスが正しく定義されているかテストする"""
+    analysis_results = {Angle.BODY_TILT: {"angle": 140.0, "state": MovementState.FORWARD_TILT}}
+    snapshot = PostureSnapshot(
+        timestamp=1.0,
+        frame_number=1,
+        analysis_results=analysis_results,
+        is_forward_leaning=True,
+        forward_lean_score=0.8,
+    )
+    assert snapshot.timestamp == 1.0
+    assert snapshot.analysis_results[Angle.BODY_TILT]["angle"] == 140.0
+    assert snapshot.is_forward_leaning is True
+    assert len(fields(snapshot)) == 5  # 5つのフィールドを持つことを確認

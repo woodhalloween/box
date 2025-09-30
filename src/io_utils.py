@@ -5,7 +5,7 @@ CSVやビデオの入出力に関するヘルパー関数をまとめたモジ�
 from __future__ import annotations
 
 import csv
-from typing import IO, Any
+from typing import IO, Any, overload
 
 import cv2
 import mediapipe as mp
@@ -17,13 +17,40 @@ from .definitions import Angle, MovementState
 from .head_shake_detector import HeadShakeDetector
 
 
-def setup_video_writer(cap: cv2.VideoCapture, output_path: str) -> cv2.VideoWriter:
-    """ビデオライターをセットアップする"""
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+@overload
+def setup_video_writer(arg: cv2.VideoCapture, output_path: str, fps: float | None = None) -> cv2.VideoWriter: ...
+@overload
+def setup_video_writer(arg: tuple[int, int], output_path: str, fps: float) -> cv2.VideoWriter: ...
+
+
+def setup_video_writer(
+    arg: cv2.VideoCapture | tuple[int, int],
+    output_path: str,
+    fps: float | None = None,
+) -> cv2.VideoWriter:
+    """
+    Create a VideoWriter either from:
+    - a capture-like object with .get (cv2.VideoCapture or FakeCap in tests),
+    - or a frame shape tuple (H, W) plus fps.
+    """
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    return cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    # ---- Tuple case (H, W) ----
+    if isinstance(arg, tuple) and len(arg) == 2:
+        h, w = arg
+        if fps is None:
+            raise ValueError("fps must be provided when passing a frame shape tuple")
+        return cv2.VideoWriter(output_path, fourcc, float(fps), (int(w), int(h)))
+
+    # ---- Capture-like case (duck typing: has .get) ----
+    if hasattr(arg, "get"):
+        cap = arg  # cv2.VideoCapture or FakeCap
+        fps_val = int(cap.get(cv2.CAP_PROP_FPS)) if fps is None else int(fps)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return cv2.VideoWriter(output_path, fourcc, fps_val, (width, height))
+
+    raise TypeError("setup_video_writer expected (H, W) tuple or a capture-like object exposing .get().")
 
 
 def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
