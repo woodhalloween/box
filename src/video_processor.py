@@ -24,6 +24,7 @@ import csv  # CSV writer 型注釈に使う（既存の setup_csv_writer を利�
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
@@ -317,55 +318,112 @@ def run_pipeline(
     # ---- new for lazy init ----
     output_video_path: str | None = None,  # 出力先パス（None なら書き出しなし）
     writer_fps: float = 30.0,  # Writer 用FPS（FFmpeg/設定に合わせる）
+    total_frames: int | None = None,  # Total frame count for progress bar
+    show_progress: bool = False,  # Whether to show tqdm progress bar
 ) -> None:
     """
     Iterate frames (t, frame) → process → write CSV/video → optional preview.
     Lazily initializes the VideoWriter on the first processed frame if `video_writer` is None.
+
+    Parameters
+    ----------
+    show_progress : bool, default=False
+        Whether to display a tqdm progress bar during processing.
+        When True, shows progress with frame count and percentage.
+        When False, processes frames without progress indication.
     """
     broke_on_q = False
     imshow_ok = True
+    progress_total = total_frames if total_frames and total_frames > 0 else None
 
     try:
-        for t, frame in frame_iter:
-            annotated, results, alerts, aux = process_frame(frame, t, state)
+        if show_progress:
+            with tqdm(total=progress_total, desc="Processing video", unit="frame") as progress_bar:
+                for t, frame in frame_iter:
+                    annotated, results, alerts, aux = process_frame(frame, t, state)
 
-            # ---- Video sink (lazy init; exactly one write per frame) ----
-            if video_writer is None:
-                if output_video_path:
-                    h, w = annotated.shape[:2]  # numpy gives (h, w)
-                    # io_utils.setup_video_writer expects (H, W)
-                    video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
+                    # ---- Video sink (lazy init; exactly one write per frame) ----
+                    if video_writer is None:
+                        if output_video_path:
+                            h, w = annotated.shape[:2]  # numpy gives (h, w)
+                            # io_utils.setup_video_writer expects (H, W)
+                            video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
+                            video_writer.write(annotated)
+                    else:
+                        video_writer.write(annotated)
+
+                    # CSV sink
+                    if csv_writer is not None:
+                        write_results_to_csv(
+                            csv_writer,
+                            timestamp=t,
+                            frame_number=state.frame_idx,
+                            analysis_results=results,
+                            posture_monitor=state.posture_monitor,
+                            dwell_time_detector=state.dwell_time_detector,
+                            dwell_alert=aux["dwell_alert"],
+                            head_shake_detector=state.head_shake_detector,
+                            head_shake_alerts=state.last_head_alerts,
+                            landmarks=state.last_landmarks,
+                            user_classifier=state.user_classifier,
+                        )
+
+                    # UI preview（CIでも落ちないよう最低限）
+                    if preview:
+                        try:
+                            cv2.imshow(window_name, annotated)
+                            if cv2.waitKey(1) & 0xFF == ord("q"):
+                                broke_on_q = True
+                                break
+                        except Exception:
+                            imshow_ok = False
+
+                    state.frame_idx += 1
+                    # Update progress bar, but don't exceed total if it's set
+                    if progress_total is None or progress_bar.n < progress_total:
+                        progress_bar.update(1)
+        else:
+            # No progress bar - direct iteration
+            for t, frame in frame_iter:
+                annotated, results, alerts, aux = process_frame(frame, t, state)
+
+                # ---- Video sink (lazy init; exactly one write per frame) ----
+                if video_writer is None:
+                    if output_video_path:
+                        h, w = annotated.shape[:2]  # numpy gives (h, w)
+                        # io_utils.setup_video_writer expects (H, W)
+                        video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
+                        video_writer.write(annotated)
+                else:
                     video_writer.write(annotated)
-            else:
-                video_writer.write(annotated)
 
-            # CSV sink
-            if csv_writer is not None:
-                write_results_to_csv(
-                    csv_writer,
-                    timestamp=t,
-                    frame_number=state.frame_idx,
-                    analysis_results=results,
-                    posture_monitor=state.posture_monitor,
-                    dwell_time_detector=state.dwell_time_detector,
-                    dwell_alert=aux["dwell_alert"],
-                    head_shake_detector=state.head_shake_detector,
-                    head_shake_alerts=state.last_head_alerts,
-                    landmarks=state.last_landmarks,
-                    user_classifier=state.user_classifier,
-                )
+                # CSV sink
+                if csv_writer is not None:
+                    write_results_to_csv(
+                        csv_writer,
+                        timestamp=t,
+                        frame_number=state.frame_idx,
+                        analysis_results=results,
+                        posture_monitor=state.posture_monitor,
+                        dwell_time_detector=state.dwell_time_detector,
+                        dwell_alert=aux["dwell_alert"],
+                        head_shake_detector=state.head_shake_detector,
+                        head_shake_alerts=state.last_head_alerts,
+                        landmarks=state.last_landmarks,
+                        user_classifier=state.user_classifier,
+                    )
 
-            # UI preview（CIでも落ちないよう最低限）
-            if preview:
-                try:
-                    cv2.imshow(window_name, annotated)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        broke_on_q = True
-                        break
-                except Exception:
-                    imshow_ok = False
+                # UI preview（CIでも落ちないよう最低限）
+                if preview:
+                    try:
+                        cv2.imshow(window_name, annotated)
+                        if cv2.waitKey(1) & 0xFF == ord("q"):
+                            broke_on_q = True
+                            break
+                    except Exception:
+                        imshow_ok = False
 
-            state.frame_idx += 1
+                state.frame_idx += 1
     finally:
         # Release writer if present (both pre-supplied and lazy)
         with contextlib.suppress(Exception):
@@ -404,10 +462,18 @@ def process_video(
     fps: float = 30.0,
     is_color: bool = True,
     preview: bool = True,
+    show_progress: bool = False,  # Whether to show tqdm progress bar
 ) -> None:
     """
     Thin facade that wires:
       source (FFmpeg/OpenCV) -> process -> sinks (CSV/video/UI).
+
+    Parameters
+    ----------
+    show_progress : bool, default=False
+        Whether to display a tqdm progress bar during video processing.
+        When True, calculates total frame count and shows processing progress.
+        When False, processes video without progress indication.
     """
     # 1) Modules / state
     pose = PoseEstimator()
@@ -442,7 +508,39 @@ def process_video(
     # VideoWriter は最初のフレーム形状で遅延初期化（ソース実寸に一致させる）
     video_writer = None
 
-    # 3) Frame source（FFmpeg優先 → フォールバックOpenCV）
+    # 3) Calculate total frames for progress bar (only if show_progress is True)
+    # Note: Use original video frame count, not FFmpeg-processed count
+    # FFmpeg fps filter may change the total frame count
+    total_frames = None
+    if show_progress:
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                original_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                original_fps = cap.get(cv2.CAP_PROP_FPS)
+                cap.release()
+
+                # If FFmpeg is changing the fps, adjust the total frame count
+                if original_fps > 0 and fps > 0 and abs(original_fps - fps) > 0.1:
+                    # Calculate new frame count based on fps change
+                    duration_seconds = original_frame_count / original_fps
+                    calculated_frames = duration_seconds * fps
+                    total_frames = round(calculated_frames)  # Use round() instead of int() for better accuracy
+                    # Add small buffer to handle FFmpeg timing precision issues
+                    if calculated_frames - int(calculated_frames) > 0.5:
+                        total_frames += 1
+                    print(
+                        f"Progress bar: Adjusted frame count from {original_frame_count} to {total_frames} "
+                        f"(fps: {original_fps} -> {fps}, calculated: {calculated_frames:.2f})"
+                    )
+                else:
+                    # Use original frame count if fps is not being changed
+                    total_frames = original_frame_count
+                    print(f"Progress bar: Using original frame count {total_frames} (fps: {original_fps})")
+        except Exception:
+            pass  # If we can't get frame count, progress bar will work without total
+
+    # 4) Frame source（FFmpeg優先 → フォールバックOpenCV）
     def _opencv_iter(path: str) -> Iterator[tuple[float, np.ndarray]]:
         cap = cv2.VideoCapture(path)
         try:
@@ -472,7 +570,7 @@ def process_video(
     else:
         frame_iter = _opencv_iter(video_path)
 
-    # 4) Run
+    # 5) Run
     rp = globals().get("run_pipeline")
     if not callable(rp):
         raise RuntimeError("run_pipeline is not callable")
@@ -485,4 +583,6 @@ def process_video(
         window_name="Integrated Analysis",
         output_video_path=output_video_path,
         writer_fps=fps,
+        total_frames=total_frames,
+        show_progress=show_progress,
     )

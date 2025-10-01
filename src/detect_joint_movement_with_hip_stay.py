@@ -657,6 +657,13 @@ def main():
         help="Rolling window for knee angle logic (seconds).",
     )
 
+    # ---- Progress bar control ----
+    parser.add_argument(
+        "--show-progress",
+        action="store_true",
+        help="Show tqdm progress bar during video processing.",
+    )
+
     args = parser.parse_args()
 
     # ---- Output paths ----
@@ -702,6 +709,7 @@ def main():
         fps=args.fps,
         is_color=not args.gray,
         preview=not args.no_display,
+        show_progress=args.show_progress,
     )
 
 
