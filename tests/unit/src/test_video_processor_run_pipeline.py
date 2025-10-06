@@ -11,8 +11,10 @@ class _StubState:
         self.posture_monitor = object()
         self.dwell_time_detector = object()
         self.head_shake_detector = object()
+        self.hand_raise_detector = object()
         self.last_head_alerts = None
         self.last_landmarks = None
+        self.last_hand_statuses = None
         self.user_classifier = object()  # not used by run_pipeline but often part of state
 
 
@@ -36,6 +38,7 @@ def test_run_pipeline_happy_path_no_break(monkeypatch):
         calls["process"].append((t, state.frame_idx))
         state.last_landmarks = "LM-" + str(state.frame_idx)
         state.last_head_alerts = ["HS-" + str(state.frame_idx)]
+        state.last_hand_statuses = {"left_hand_raised": True, "right_hand_raised": False}
         # annotated frame (same), minimal results, alerts, aux
         return frame, {"knee": {"angle": 90.0}}, ["ALERT"], {"dwell_alert": "DWELL"}
 

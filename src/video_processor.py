@@ -29,6 +29,7 @@ from tqdm import tqdm
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
 from .analysis.user_classifier import UserClassifier
+from .detectors.hand_raise_detector import HandRaiseDetector
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
 from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
@@ -44,11 +45,14 @@ class PipelineState:
     user_classifier: UserClassifier
     dwell_time_detector: DwellTimeDetector
     head_shake_detector: HeadShakeDetector
+    hand_raise_detector: HandRaiseDetector
     posture_monitor: PostureMonitor
     disable_jp: bool = False
     frame_idx: int = 0
     last_landmarks: np.ndarray | None = None
     last_head_alerts: list[str] = field(default_factory=list)
+    last_hand_alerts: list[str] = field(default_factory=list)
+    last_hand_statuses: dict[str, bool] | None = None
 
 
 class VideoProcessor:
@@ -161,6 +165,7 @@ class VideoProcessor:
             monitoring_duration=self.pm_monitoring_duration_sec, alert_threshold=self.pm_alert_threshold_ratio
         )
         self.head_shake_detector = HeadShakeDetector()
+        self.hand_raise_detector = HandRaiseDetector(visibility_threshold=0.5, min_consecutive_frames=3)
 
     def run(self):
         """ビデオ処理のメインループを実行する"""
@@ -215,6 +220,13 @@ class VideoProcessor:
         ):
             print(f"[{timestamp:.1f}s] 通知: 指定エリアのお客様対応をお願いします。")
 
+        hand_statuses = None
+        if hasattr(self, "hand_raise_detector") and self.hand_raise_detector:
+            try:
+                hand_statuses = self.hand_raise_detector.detect(landmarks)
+            except Exception:
+                hand_statuses = None
+
         write_results_to_csv(
             csv_writer=self.csv_writer,
             timestamp=timestamp,
@@ -225,12 +237,20 @@ class VideoProcessor:
             dwell_alert=dwell_alert,
             head_shake_detector=self.head_shake_detector,
             head_shake_alerts=head_shake_alerts,
+            hand_raise_detector=self.hand_raise_detector,
+            hand_statuses=hand_statuses,
             landmarks=landmarks,
             user_classifier=self.user_classifier,
         )
 
         frame = draw_landmarks(frame, landmarks)
-        frame = draw_analysis_results(frame, analysis_results, landmarks, disable_japanese=self.disable_japanese)
+        frame = draw_analysis_results(
+            frame,
+            analysis_results,
+            hand_statuses,
+            landmarks,
+            disable_japanese=self.disable_japanese,
+        )
         frame = draw_detection_info(
             frame,
             self.user_classifier,
@@ -291,9 +311,13 @@ def process_frame(
     alerts.extend(head_alerts)
     state.last_head_alerts = head_alerts
 
+    # TODO: Hand raise
+    hand_statuses = state.hand_raise_detector.detect(landmarks=landmarks)
+    state.last_hand_statuses = hand_statuses
+
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
-    frame = draw_analysis_results(frame, results, landmarks, disable_japanese=state.disable_jp)
+    frame = draw_analysis_results(frame, results, hand_statuses, landmarks, disable_japanese=state.disable_jp)
     frame = draw_detection_info(
         frame,
         state.user_classifier,
@@ -364,6 +388,8 @@ def run_pipeline(
                             dwell_alert=aux["dwell_alert"],
                             head_shake_detector=state.head_shake_detector,
                             head_shake_alerts=state.last_head_alerts,
+                            hand_raise_detector=state.hand_raise_detector,
+                            hand_statuses=state.last_hand_statuses,
                             landmarks=state.last_landmarks,
                             user_classifier=state.user_classifier,
                         )
@@ -409,6 +435,8 @@ def run_pipeline(
                         dwell_alert=aux["dwell_alert"],
                         head_shake_detector=state.head_shake_detector,
                         head_shake_alerts=state.last_head_alerts,
+                        hand_raise_detector=state.hand_raise_detector,
+                        hand_statuses=state.last_hand_statuses,
                         landmarks=state.last_landmarks,
                         user_classifier=state.user_classifier,
                     )
@@ -455,6 +483,9 @@ def process_video(
     pm_alert_threshold_ratio: float = 0.7,
     uc_threshold_deg: float = 90.0,
     uc_moving_window_seconds: float = 5.0,
+    # Hand raise
+    hand_raise_visibility_threshold: float = 0.5,
+    hand_raise_min_consecutive_frames: int = 5,
     # 新：FFmpeg切替のためのヒント（省略時は自動推定）
     input_mode: str | None = None,  # "ffmpeg-file" | "ffmpeg-camera"
     width: int = 1280,
@@ -491,6 +522,10 @@ def process_video(
         cycle_detection_window=60,
         min_oscillations=2,
     )
+    hand_raise_detector = HandRaiseDetector(
+        visibility_threshold=hand_raise_visibility_threshold,
+        min_consecutive_frames=hand_raise_min_consecutive_frames,
+    )
     posture = PostureMonitor(pm_monitoring_duration_sec, pm_alert_threshold_ratio)
 
     state = PipelineState(
@@ -499,6 +534,7 @@ def process_video(
         user_classifier=user_clf,
         dwell_time_detector=dwell,
         head_shake_detector=head,
+        hand_raise_detector=hand_raise_detector,
         posture_monitor=posture,
         disable_jp=disable_japanese,
     )

@@ -115,6 +115,8 @@ def test_write_results_to_csv_populates_measurements_with_landmarks():
         dwell_alert="Stay alert",
         head_shake_detector=head_shake_detector,
         head_shake_alerts=head_shake_alerts,
+        hand_raise_detector=None,
+        hand_statuses={"left_hand_raised": True, "right_hand_raised": False},
         landmarks=landmarks,
     )
 
@@ -141,6 +143,8 @@ def test_write_results_to_csv_populates_measurements_with_landmarks():
     assert row["head_shake_horizontal_detected"] == "True"
     assert row["head_shake_vertical_detected"] == "False"
     assert row["head_shake_alerts"] == "Horizontal; Vertical"
+    assert row["left_hand_raised"] == "True"
+    assert row["right_hand_raised"] == "False"
     assert row["NOSE_x"] == "0.0"
     assert row["RIGHT_ANKLE_z"] == str(float(PoseLandmark.RIGHT_ANKLE.value + 2))
 
@@ -162,6 +166,8 @@ def test_write_results_to_csv_handles_missing_optional_inputs():
         dwell_alert=None,
         head_shake_detector=None,
         head_shake_alerts=None,
+        hand_raise_detector=None,
+        hand_statuses=None,
         landmarks=None,
     )
 
@@ -174,4 +180,6 @@ def test_write_results_to_csv_handles_missing_optional_inputs():
     assert row["stay_duration"] == "0.0"
     assert row["head_shake_horizontal_detected"] == "False"
     assert row["head_shake_alerts"] == ""
+    assert row["left_hand_raised"] == "False"
+    assert row["right_hand_raised"] == "False"
     assert row["NOSE_x"] == "0.0"

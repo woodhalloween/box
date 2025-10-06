@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import ANY, MagicMock, mock_open, patch
 
 import numpy as np
 import pytest
@@ -91,6 +91,7 @@ class TestVideoProcessor(unittest.TestCase):
     @patch("src.video_processor.DwellTimeDetector")
     @patch("src.video_processor.PostureMonitor")
     @patch("src.video_processor.HeadShakeDetector")
+    @patch("src.video_processor.HandRaiseDetector")
     @patch("src.video_processor.write_results_to_csv")
     @patch("src.video_processor.draw_landmarks")
     @patch("src.video_processor.draw_analysis_results")
@@ -105,6 +106,7 @@ class TestVideoProcessor(unittest.TestCase):
         mock_draw_analysis_results,
         mock_draw_landmarks,
         mock_write_csv,
+        mock_hand_raise_detector,
         mock_head_shake_detector,
         mock_posture_monitor,
         mock_dwell_time_detector,
@@ -142,6 +144,10 @@ class TestVideoProcessor(unittest.TestCase):
         mock_draw_analysis_results.return_value = dummy_frame
         mock_draw_detection_info.return_value = dummy_frame
 
+        # Mock HandRaiseDetector
+        mock_hand_raise_detector_instance = mock_hand_raise_detector.return_value
+        mock_hand_raise_detector_instance.detect.return_value = {"left_hand_raised": True, "right_hand_raised": False}
+
         # Act
         with VideoProcessor(
             video_path="dummy.mp4",
@@ -174,11 +180,19 @@ class TestVideoProcessor(unittest.TestCase):
         mock_posture_monitor.return_value.update.assert_called_once()
         mock_head_shake_detector.return_value.update.assert_called_once()
         mock_head_shake_detector.return_value.check_alerts.assert_called_once()
+        mock_hand_raise_detector_instance.detect.assert_called_once_with("dummy_landmarks")
 
         # Assert output functions were called
         mock_write_csv.assert_called_once()
         mock_draw_landmarks.assert_called_once_with(dummy_frame, "dummy_landmarks")
         mock_draw_analysis_results.assert_called_once()
+        mock_draw_analysis_results.assert_called_with(
+            dummy_frame,
+            ANY,
+            {"left_hand_raised": True, "right_hand_raised": False},
+            "dummy_landmarks",
+            disable_japanese=False,
+        )
         mock_draw_detection_info.assert_called_once()
 
         # Assert video writer was called for the processed frame
@@ -273,7 +287,10 @@ def test__process_frame_prints_notification_when_conditions_met(monkeypatch, cap
 
     # Monkeypatch drawing and CSV functions to be no-ops so the test focuses on the print branch
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, landmarks: f)
-    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, a, landmarks, disable_japanese: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, a, hand_statuses, landmarks, disable_japanese: f,
+    )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
     monkeypatch.setattr("src.video_processor.write_results_to_csv", lambda **kw: None)
 
@@ -296,6 +313,7 @@ def test__process_frame_prints_notification_when_conditions_met(monkeypatch, cap
     # Other modules: no-op implementations
     vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
     vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda ts: [])
+    vp.hand_raise_detector = SimpleNamespace(detect=lambda lm: {"left_hand_raised": False, "right_hand_raised": False})
     vp.video_writer = SimpleNamespace(write=lambda fr: None)
     vp.csv_writer = None  # write_results_to_csv was monkeypatched to no-op
 
@@ -392,8 +410,12 @@ def test__process_frame_initializes_and_writes_when_landmarks_present(monkeypatc
     )
     vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
     vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda *a, **k: [])
+    vp.hand_raise_detector = SimpleNamespace(detect=lambda lm: {"left_hand_raised": False, "right_hand_raised": False})
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
-    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
     monkeypatch.setattr("src.video_processor.write_results_to_csv", lambda **kw: None)
 

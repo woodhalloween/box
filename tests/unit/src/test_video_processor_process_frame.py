@@ -67,6 +67,15 @@ class _HeadShakeFake:
         return list(self._alerts)
 
 
+class _HandRaiseFake:
+    def __init__(self):
+        self.detect_calls = 0
+
+    def detect(self, landmarks):
+        self.detect_calls += 1
+        return {"left_hand_raised": False, "right_hand_raised": False}
+
+
 def _mk_state(
     *,
     landmarks,
@@ -88,11 +97,13 @@ def _mk_state(
     s.posture_monitor = _PostureMonitorFake(posture_alerts)
     s.dwell_time_detector = _DwellFake(dwell_alert)
     s.head_shake_detector = _HeadShakeFake(head_update_dict, head_alerts)
+    s.hand_raise_detector = _HandRaiseFake()
     s.user_classifier = object()  # only passed through to draw function (no update attr)
     s.frame_idx = frame_idx
     s.disable_jp = disable_jp
     s.last_landmarks = "UNTOUCHED"
     s.last_head_alerts = "UNTOUCHED"
+    s.last_hand_statuses = "UNTOUCHED"
     return s
 
 
@@ -145,8 +156,8 @@ def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
         calls["draw"].append(("landmarks", frame.shape, landmarks))
         return frame  # pass-through
 
-    def fake_draw_analysis_results(frame, results, landmarks, *, disable_japanese):
-        calls["draw"].append(("analysis", bool(results), disable_japanese))
+    def fake_draw_analysis_results(frame, results, hand_statuses, landmarks, *, disable_japanese):
+        calls["draw"].append(("analysis", bool(results), bool(hand_statuses), disable_japanese))
         return frame
 
     def fake_draw_detection_info(
@@ -192,7 +203,7 @@ def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
 
     # Verify draw call ordering
     assert calls["draw"][0][0] == "landmarks"
-    assert calls["draw"][1] == ("analysis", True, False)  # disable_japanese=False
+    assert calls["draw"][1] == ("analysis", True, True, False)  # disable_japanese=False
     assert calls["draw"][2][0] == "info"
     assert calls["draw"][2][2] is True and calls["draw"][2][3] == 1.23
 
@@ -211,7 +222,10 @@ def test_process_frame_user_classifier_update_is_optional(monkeypatch):
 
     # Patch draw functions to simple pass-throughs
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
-    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
 
     frame_in = np.zeros((10, 10, 3), dtype=np.uint8)
@@ -244,15 +258,20 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.posture_monitor = PM()
     s.dwell_time_detector = _DwellFake(None)
     s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = _HandRaiseFake()
     s.user_classifier = object()
     s.frame_idx = 5
     s.disable_jp = True
     s.last_landmarks = None
     s.last_head_alerts = []
+    s.last_hand_statuses = None
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
-    monkeypatch.setattr("src.video_processor.draw_analysis_results", lambda f, r, lm, disable_japanese: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
 
     frame = np.zeros((4, 4, 3), dtype=np.uint8)
