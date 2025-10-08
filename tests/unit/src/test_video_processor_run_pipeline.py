@@ -393,3 +393,109 @@ def test_run_pipeline_does_not_reinit_when_writer_already_provided(monkeypatch):
     assert calls["write"] == 2
     assert calls["release"] == 1
     assert state.frame_idx == 7
+
+
+# Test for when `show_progress=True`
+def test_run_pipeline_with_progress_bar(monkeypatch):
+    """
+    Test the case where `show_progress` is True.
+    We expect tqdm to be used to wrap the frame iterator.
+    """
+    calls = {"process": [], "csv": [], "video": [], "progress_bar": 0}
+
+    def fake_process_frame(frame, t, state):
+        calls["process"].append((t, state.frame_idx))
+        return frame, {}, [], {"dwell_alert": None}
+
+    monkeypatch.setattr("src.video_processor.process_frame", fake_process_frame)
+
+    def fake_write_results_to_csv(csv_writer, **kwargs):
+        calls["csv"].append((csv_writer, kwargs))
+
+    monkeypatch.setattr("src.video_processor.write_results_to_csv", fake_write_results_to_csv)
+
+    class FakeVW:
+        def write(self, frame):
+            calls["video"].append(frame.shape)
+
+    def fake_tqdm(iterator, total=None, desc=None, unit=None):
+        calls["progress_bar"] += 1
+        return iterator  # Just return the iterator, don't wrap it for testing
+
+    monkeypatch.setattr("src.video_processor.tqdm", fake_tqdm)
+
+    state = _StubState(frame_idx=0)
+    csv_writer = object()
+    video_writer = FakeVW()
+
+    run_pipeline(
+        _make_frame_iter(2),
+        csv_writer=csv_writer,
+        video_writer=video_writer,
+        state=state,
+        preview=False,
+        show_progress=True,
+    )
+
+    # Ensure tqdm was used (i.e., progress_bar count is > 0)
+    assert calls["progress_bar"] == 1
+    # Ensure process was called twice
+    assert len(calls["process"]) == 2
+    # Ensure CSV and video were written twice
+    assert len(calls["csv"]) == 2
+    assert len(calls["video"]) == 2
+    # Ensure state.frame_idx was incremented correctly
+    assert state.frame_idx == 2
+
+
+# Test for when `show_progress=False`
+def test_run_pipeline_without_progress_bar(monkeypatch):
+    """
+    Test the case where `show_progress` is False.
+    We expect the iterator to not be wrapped by tqdm.
+    """
+    calls = {"process": [], "csv": [], "video": [], "progress_bar": 0}
+
+    def fake_process_frame(frame, t, state):
+        calls["process"].append((t, state.frame_idx))
+        return frame, {}, [], {"dwell_alert": None}
+
+    monkeypatch.setattr("src.video_processor.process_frame", fake_process_frame)
+
+    def fake_write_results_to_csv(csv_writer, **kwargs):
+        calls["csv"].append((csv_writer, kwargs))
+
+    monkeypatch.setattr("src.video_processor.write_results_to_csv", fake_write_results_to_csv)
+
+    class FakeVW:
+        def write(self, frame):
+            calls["video"].append(frame.shape)
+
+    def fake_tqdm(iterator, total=None, desc=None, unit=None):
+        calls["progress_bar"] += 1
+        return iterator  # Return iterator as is without wrapping
+
+    monkeypatch.setattr("src.video_processor.tqdm", fake_tqdm)
+
+    state = _StubState(frame_idx=0)
+    csv_writer = object()
+    video_writer = FakeVW()
+
+    run_pipeline(
+        _make_frame_iter(2),
+        csv_writer=csv_writer,
+        video_writer=video_writer,
+        state=state,
+        preview=False,
+        show_progress=False,
+    )
+
+    # Ensure tqdm was NOT used (i.e., progress_bar count is 0)
+    assert calls["progress_bar"] == 0
+    # Ensure process was called twice
+    assert len(calls["process"]) == 2
+    # Ensure CSV and video were written twice
+    assert len(calls["csv"]) == 2
+    assert len(calls["video"]) == 2
+    # Ensure state.frame_idx was incremented correctly
+    assert state.frame_idx == 2

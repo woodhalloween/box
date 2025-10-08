@@ -361,98 +361,55 @@ def run_pipeline(
     imshow_ok = True
     progress_total = total_frames if total_frames and total_frames > 0 else None
 
+    # 🦸‍♀️ Saki: "進捗バーを'あってもなくてもいい透明な層'として扱う"
+    if show_progress:
+        iterator_wrapper = tqdm(frame_iter, total=progress_total, desc="Processing video", unit="frame")
+    else:
+        iterator_wrapper = frame_iter
+
     try:
-        if show_progress:
-            with tqdm(total=progress_total, desc="Processing video", unit="frame") as progress_bar:
-                for t, frame in frame_iter:
-                    annotated, results, alerts, aux = process_frame(frame, t, state)
+        for t, frame in iterator_wrapper:
+            # Core processing (identical regardless of progress bar)
+            annotated, results, alerts, aux = process_frame(frame, t, state)
 
-                    # ---- Video sink (lazy init; exactly one write per frame) ----
-                    if video_writer is None:
-                        if output_video_path:
-                            h, w = annotated.shape[:2]  # numpy gives (h, w)
-                            # io_utils.setup_video_writer expects (H, W)
-                            video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
-                            video_writer.write(annotated)
-                    else:
-                        video_writer.write(annotated)
-
-                    # CSV sink
-                    if csv_writer is not None:
-                        write_results_to_csv(
-                            csv_writer,
-                            timestamp=t,
-                            frame_number=state.frame_idx,
-                            analysis_results=results,
-                            posture_monitor=state.posture_monitor,
-                            dwell_time_detector=state.dwell_time_detector,
-                            dwell_alert=aux["dwell_alert"],
-                            head_shake_detector=state.head_shake_detector,
-                            head_shake_alerts=state.last_head_alerts,
-                            hand_raise_detector=state.hand_raise_detector,
-                            hand_statuses=state.last_hand_statuses,
-                            landmarks=state.last_landmarks,
-                            user_classifier=state.user_classifier,
-                        )
-
-                    # UI preview（CIでも落ちないよう最低限）
-                    if preview:
-                        try:
-                            cv2.imshow(window_name, annotated)
-                            if cv2.waitKey(1) & 0xFF == ord("q"):
-                                broke_on_q = True
-                                break
-                        except Exception:
-                            imshow_ok = False
-
-                    state.frame_idx += 1
-                    # Update progress bar, but don't exceed total if it's set
-                    if progress_total is None or progress_bar.n < progress_total:
-                        progress_bar.update(1)
-        else:
-            # No progress bar - direct iteration
-            for t, frame in frame_iter:
-                annotated, results, alerts, aux = process_frame(frame, t, state)
-
-                # ---- Video sink (lazy init; exactly one write per frame) ----
-                if video_writer is None:
-                    if output_video_path:
-                        h, w = annotated.shape[:2]  # numpy gives (h, w)
-                        # io_utils.setup_video_writer expects (H, W)
-                        video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
-                        video_writer.write(annotated)
-                else:
+            # Video sink with lazy initialization
+            if video_writer is None:
+                if output_video_path:
+                    h, w = annotated.shape[:2]
+                    video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
                     video_writer.write(annotated)
+            else:
+                video_writer.write(annotated)
 
-                # CSV sink
-                if csv_writer is not None:
-                    write_results_to_csv(
-                        csv_writer,
-                        timestamp=t,
-                        frame_number=state.frame_idx,
-                        analysis_results=results,
-                        posture_monitor=state.posture_monitor,
-                        dwell_time_detector=state.dwell_time_detector,
-                        dwell_alert=aux["dwell_alert"],
-                        head_shake_detector=state.head_shake_detector,
-                        head_shake_alerts=state.last_head_alerts,
-                        hand_raise_detector=state.hand_raise_detector,
-                        hand_statuses=state.last_hand_statuses,
-                        landmarks=state.last_landmarks,
-                        user_classifier=state.user_classifier,
-                    )
+            # CSV sink
+            if csv_writer is not None:
+                write_results_to_csv(
+                    csv_writer,
+                    timestamp=t,
+                    frame_number=state.frame_idx,
+                    analysis_results=results,
+                    posture_monitor=state.posture_monitor,
+                    dwell_time_detector=state.dwell_time_detector,
+                    dwell_alert=aux["dwell_alert"],
+                    head_shake_detector=state.head_shake_detector,
+                    head_shake_alerts=state.last_head_alerts,
+                    hand_raise_detector=state.hand_raise_detector,
+                    hand_statuses=state.last_hand_statuses,
+                    landmarks=state.last_landmarks,
+                    user_classifier=state.user_classifier,
+                )
 
-                # UI preview（CIでも落ちないよう最低限）
-                if preview:
-                    try:
-                        cv2.imshow(window_name, annotated)
-                        if cv2.waitKey(1) & 0xFF == ord("q"):
-                            broke_on_q = True
-                            break
-                    except Exception:
-                        imshow_ok = False
+            # UI preview
+            if preview:
+                try:
+                    cv2.imshow(window_name, annotated)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        broke_on_q = True
+                        break
+                except Exception:
+                    imshow_ok = False
 
-                state.frame_idx += 1
+            state.frame_idx += 1
     finally:
         # Release writer if present (both pre-supplied and lazy)
         with contextlib.suppress(Exception):

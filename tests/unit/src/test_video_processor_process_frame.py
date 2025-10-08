@@ -283,3 +283,107 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     assert calls["pm"][0][0] == 2.0
     assert calls["pm"][0][1] == 5
     assert "K" in calls["pm"][0][2]
+
+
+def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
+    """
+    When state.user_classifier has an 'update' method that returns alerts,
+    those alerts should be added to the alerts list.
+    This tests lines 294-296 when user_classifier.update() returns a list.
+    """
+    calls = {"uc": []}
+
+    class UserClassifierWithUpdate:
+        def update(self, t, results):
+            calls["uc"].append((t, dict(results)))
+            return ["UC_ALERT_1", "UC_ALERT_2"]
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({"knee": {"angle": 45.0}})
+    s.user_classifier = UserClassifierWithUpdate()  # Has update method
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = _HandRaiseFake()
+    s.frame_idx = 10
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = None
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=3.5, state=s)
+
+    # Verify user_classifier.update was called with correct args
+    assert len(calls["uc"]) == 1
+    assert calls["uc"][0][0] == 3.5
+    assert "knee" in calls["uc"][0][1]
+    assert calls["uc"][0][1]["knee"]["angle"] == 45.0
+
+    # Verify alerts from user_classifier were added
+    assert "UC_ALERT_1" in alerts
+    assert "UC_ALERT_2" in alerts
+
+
+def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
+    """
+    When state.user_classifier has an 'update' method that returns None,
+    the 'or []' fallback should be used and no error should occur.
+    This tests lines 294-296 when user_classifier.update() returns None.
+    """
+    calls = {"uc": []}
+
+    class UserClassifierReturnsNone:
+        def update(self, t, results):
+            calls["uc"].append((t, dict(results)))
+            return  # Explicitly return None
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({"hip": {"y": 100}})
+    s.user_classifier = UserClassifierReturnsNone()  # Has update method that returns None
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = _HandRaiseFake()
+    s.frame_idx = 20
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = None
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=5.0, state=s)
+
+    # Verify user_classifier.update was called
+    assert len(calls["uc"]) == 1
+    assert calls["uc"][0][0] == 5.0
+
+    # Should complete without exceptions, alerts should not contain anything from user_classifier
+    assert out_frame is frame
+    # No assertion errors should have occurred
