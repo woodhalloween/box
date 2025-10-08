@@ -36,6 +36,7 @@ from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmar
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
 from .pose_estimator import PoseEstimator
+from .video_processing.estimate_total_frames import estimate_total_frames
 
 
 @dataclass
@@ -547,34 +548,7 @@ def process_video(
     # 3) Calculate total frames for progress bar (only if show_progress is True)
     # Note: Use original video frame count, not FFmpeg-processed count
     # FFmpeg fps filter may change the total frame count
-    total_frames = None
-    if show_progress:
-        try:
-            cap = cv2.VideoCapture(video_path)
-            if cap.isOpened():
-                original_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                original_fps = cap.get(cv2.CAP_PROP_FPS)
-                cap.release()
-
-                # If FFmpeg is changing the fps, adjust the total frame count
-                if original_fps > 0 and fps > 0 and abs(original_fps - fps) > 0.1:
-                    # Calculate new frame count based on fps change
-                    duration_seconds = original_frame_count / original_fps
-                    calculated_frames = duration_seconds * fps
-                    total_frames = round(calculated_frames)  # Use round() instead of int() for better accuracy
-                    # Add small buffer to handle FFmpeg timing precision issues
-                    if calculated_frames - int(calculated_frames) > 0.5:
-                        total_frames += 1
-                    print(
-                        f"Progress bar: Adjusted frame count from {original_frame_count} to {total_frames} "
-                        f"(fps: {original_fps} -> {fps}, calculated: {calculated_frames:.2f})"
-                    )
-                else:
-                    # Use original frame count if fps is not being changed
-                    total_frames = original_frame_count
-                    print(f"Progress bar: Using original frame count {total_frames} (fps: {original_fps})")
-        except Exception:
-            pass  # If we can't get frame count, progress bar will work without total
+    total_frames = estimate_total_frames(video_path=video_path, fps=fps, show_progress=show_progress)
 
     # 4) Frame source（FFmpeg優先 → フォールバックOpenCV）
     def _opencv_iter(path: str) -> Iterator[tuple[float, np.ndarray]]:
