@@ -103,6 +103,61 @@ def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
     return image
 
 
+def draw_torso_indicators(image: np.ndarray, landmarks: np.ndarray, confidence_threshold: float = 0.5) -> np.ndarray:
+    """体幹線と垂直基準線を描画する。
+
+    Args:
+        image: 描画対象の画像
+        landmarks: ポーズランドマーク (33, 4) [x, y, z, visibility]
+        confidence_threshold: 信頼度の閾値
+
+    Returns:
+        描画済みの画像
+    """
+    if not image.flags.writeable:
+        image = image.copy()
+
+    h, w, _ = image.shape
+
+    try:
+        # 肩と腰のランドマークを取得
+        left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
+        left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
+        right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
+
+        # 信頼度チェック
+        if (
+            left_shoulder[3] < confidence_threshold
+            or right_shoulder[3] < confidence_threshold
+            or left_hip[3] < confidence_threshold
+            or right_hip[3] < confidence_threshold
+        ):
+            return image
+
+        # 肩と腰の中点を計算（画素座標）
+        shoulder_mid_x = int((left_shoulder[0] + right_shoulder[0]) / 2 * w)
+        shoulder_mid_y = int((left_shoulder[1] + right_shoulder[1]) / 2 * h)
+        hip_mid_x = int((left_hip[0] + right_hip[0]) / 2 * w)
+        hip_mid_y = int((left_hip[1] + right_hip[1]) / 2 * h)
+
+        # 体幹線を描画（肩中点から腰中点へ）
+        cv2.line(image, (shoulder_mid_x, shoulder_mid_y), (hip_mid_x, hip_mid_y), (0, 255, 255), 3)  # 黄色
+
+        # 垂直基準線を描画（腰中点から真下へ）
+        vertical_length = int(h * 0.2)  # 画面高さの20%
+        cv2.line(image, (hip_mid_x, hip_mid_y), (hip_mid_x, hip_mid_y + vertical_length), (255, 0, 255), 2)  # マゼンタ
+
+        # 肩中点と腰中点に円を描画
+        cv2.circle(image, (shoulder_mid_x, shoulder_mid_y), 6, (0, 255, 255), -1)  # 黄色
+        cv2.circle(image, (hip_mid_x, hip_mid_y), 6, (0, 255, 255), -1)  # 黄色
+
+    except (IndexError, TypeError):
+        pass  # エラーが発生した場合は何もしない
+
+    return image
+
+
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
@@ -111,7 +166,7 @@ def draw_analysis_results(
     disable_japanese: bool = False,
 ) -> np.ndarray:
     """分析結果を日本語で画像に描画する。"""
-    h, w, _ = image.shape
+    _h, w, _ = image.shape
     y_offset = 30
 
     img_with_text = image.copy()
@@ -120,6 +175,11 @@ def draw_analysis_results(
     fps_text = f"FPS: {fps:.2f}"
     # 右上に白で描画
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
+    # --- ここまで ---
+
+    # --- 体幹線と垂直基準線を描画 ---
+    if landmarks is not None:
+        img_with_text = draw_torso_indicators(img_with_text, landmarks)
     # --- ここまで ---
 
     for angle, data in results.items():

@@ -20,10 +20,14 @@ dwell_time_detector:
   # Advanced parameters for movement detection logic
   advanced_detection:
     spike_threshold: 1.5
+    spike_window_sec: 1.0
     stability_threshold_px: 50.0
+    stability_window_sec: 2.0
     grace_period_sec: 1.5
-  use_normalization: false
-  normalization_base: "torso"
+    confirmation_ratio: 0.5
+  # Normalization settings for person scale
+  use_normalization: true
+  normalization_base: "torso"  # Options: torso, shoulder, screen
 
 head_shake_detector:
   # Settings for detecting head shakes and nods.
