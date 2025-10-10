@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from mediapipe.python.solutions.pose import PoseLandmark
 
-from src.detectors.hand_raise_detector import HandRaiseDetector
+from src.detectors.hand_raise_refactored import HandRaiseDetector
 
 # --- テスト用の設定 ---
 VISIBILITY_THRESHOLD = 0.5

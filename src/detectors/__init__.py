@@ -1,3 +1,3 @@
-from .hand_raise_detector import HandRaiseDetector
+from .hand_raise_refactored import HandRaiseDetector
 
 __all__ = ["HandRaiseDetector"]

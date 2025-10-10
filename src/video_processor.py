@@ -29,7 +29,7 @@ from tqdm import tqdm
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
 from .analysis.user_classifier import UserClassifier
-from .detectors.hand_raise_detector import HandRaiseDetector
+from .detectors.hand_raise_refactored import HandRaiseDetector
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
 from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
