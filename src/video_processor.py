@@ -27,6 +27,7 @@ import numpy as np
 
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
+from .analysis.torso_sway_detector import TorsoSwayDetector
 from .analysis.user_classifier import UserClassifier
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
@@ -44,10 +45,12 @@ class PipelineState:
     dwell_time_detector: DwellTimeDetector
     head_shake_detector: HeadShakeDetector
     posture_monitor: PostureMonitor
+    sway_detector: TorsoSwayDetector
     disable_jp: bool = False
     frame_idx: int = 0
     last_landmarks: np.ndarray | None = None
     last_head_alerts: list[str] = field(default_factory=list)
+    last_sway_metrics: dict[str, Any] = field(default_factory=dict)
 
 
 class VideoProcessor:
@@ -160,6 +163,19 @@ class VideoProcessor:
             monitoring_duration=self.pm_monitoring_duration_sec, alert_threshold=self.pm_alert_threshold_ratio
         )
         self.head_shake_detector = HeadShakeDetector()
+        self.sway_detector = TorsoSwayDetector(
+            fps=self.fps,
+            window_sec=8.0,
+            smooth_sec=0.5,
+            amp_th_lat=10.0,
+            amp_th_ap=8.0,
+            f_min=0.2,
+            f_max=1.5,
+            min_cycles=3,
+            on_sec=1.2,
+            off_sec=0.7,
+            use_staying_gate=False,
+        )
 
     def run(self):
         """ビデオ処理のメインループを実行する"""
@@ -202,6 +218,54 @@ class VideoProcessor:
         head_shake_results = self.head_shake_detector.update(landmarks, timestamp, frame_count)
         analysis_results.update(head_shake_results)
         head_shake_alerts = self.head_shake_detector.check_alerts(timestamp)
+        # Torso sway metrics and alerts (optional in tests)
+        sway_alerts: list[str] = []
+        torso_sway_payload: dict[str, dict] = {}
+        if hasattr(self, "sway_detector") and self.sway_detector is not None:
+            lateral_angle = (
+                analysis_results.get(Angle.LATERAL_TILT, {}).get("angle")
+                if Angle.LATERAL_TILT in analysis_results
+                else None
+            )
+            body_tilt_angle = (
+                analysis_results.get(Angle.BODY_TILT, {}).get("angle") if Angle.BODY_TILT in analysis_results else None
+            )
+            hip_state = None
+            if hasattr(self.dwell_time_detector, "get_current_status"):
+                status = self.dwell_time_detector.get_current_status() or {}
+                hip_state = status.get("state", None)
+            sway_metrics = self.sway_detector.update(
+                t=timestamp,
+                lateral_deg=lateral_angle,
+                body_tilt_deg=body_tilt_angle,
+                hip_state=hip_state,
+            )
+
+            def _level_jp(level: str) -> str:
+                return {"small": "小", "medium": "中", "large": "大"}.get(level, "")
+
+            if sway_metrics.get("lateral") and sway_metrics["lateral"].sway:
+                m = sway_metrics["lateral"]
+                sway_alerts.append(f"体幹：左右揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+            if sway_metrics.get("ap") and sway_metrics["ap"].sway:
+                m = sway_metrics["ap"]
+                sway_alerts.append(f"体幹：前後揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+            torso_sway_payload = {
+                "lateral": {
+                    "amp": sway_metrics.get("lateral").amp if sway_metrics.get("lateral") else 0.0,
+                    "freq": sway_metrics.get("lateral").freq if sway_metrics.get("lateral") else 0.0,
+                    "cycles": sway_metrics.get("lateral").cycles if sway_metrics.get("lateral") else 0,
+                    "sway": sway_metrics.get("lateral").sway if sway_metrics.get("lateral") else False,
+                    "level": sway_metrics.get("lateral").level if sway_metrics.get("lateral") else "none",
+                },
+                "ap": {
+                    "amp": sway_metrics.get("ap").amp if sway_metrics.get("ap") else 0.0,
+                    "freq": sway_metrics.get("ap").freq if sway_metrics.get("ap") else 0.0,
+                    "cycles": sway_metrics.get("ap").cycles if sway_metrics.get("ap") else 0,
+                    "sway": sway_metrics.get("ap").sway if sway_metrics.get("ap") else False,
+                    "level": sway_metrics.get("ap").level if sway_metrics.get("ap") else "none",
+                },
+            }
 
         user_is_classified = self.user_classifier.get_current_alert() is not None
         is_long_stay = self.dwell_time_detector.get_current_status()["is_long_stay"]
@@ -226,6 +290,7 @@ class VideoProcessor:
             head_shake_alerts=head_shake_alerts,
             landmarks=landmarks,
             user_classifier=self.user_classifier,
+            torso_sway=torso_sway_payload,
         )
 
         frame = draw_landmarks(frame, landmarks)
@@ -236,7 +301,7 @@ class VideoProcessor:
             self.dwell_time_detector,
             self.head_shake_detector,
             self.posture_monitor,
-            posture_alerts,
+            posture_alerts + sway_alerts,
             landmarks,
             timestamp,
         )
@@ -290,6 +355,47 @@ def process_frame(
     alerts.extend(head_alerts)
     state.last_head_alerts = head_alerts
 
+    # Torso sway
+    lateral_angle = results.get(Angle.LATERAL_TILT, {}).get("angle") if Angle.LATERAL_TILT in results else None
+    body_tilt_angle = results.get(Angle.BODY_TILT, {}).get("angle") if Angle.BODY_TILT in results else None
+    if hasattr(state, "sway_detector") and state.sway_detector is not None:
+        hip_state = None
+        if hasattr(state.dwell_time_detector, "get_current_status"):
+            st = state.dwell_time_detector.get_current_status() or {}
+            hip_state = st.get("state", None)
+        sway = state.sway_detector.update(
+            t=t,
+            lateral_deg=lateral_angle,
+            body_tilt_deg=body_tilt_angle,
+            hip_state=hip_state,
+        )
+        state.last_sway_metrics = {
+            "lateral": {
+                "amp": sway.get("lateral").amp if sway.get("lateral") else 0.0,
+                "freq": sway.get("lateral").freq if sway.get("lateral") else 0.0,
+                "cycles": sway.get("lateral").cycles if sway.get("lateral") else 0,
+                "sway": sway.get("lateral").sway if sway.get("lateral") else False,
+                "level": sway.get("lateral").level if sway.get("lateral") else "none",
+            },
+            "ap": {
+                "amp": sway.get("ap").amp if sway.get("ap") else 0.0,
+                "freq": sway.get("ap").freq if sway.get("ap") else 0.0,
+                "cycles": sway.get("ap").cycles if sway.get("ap") else 0,
+                "sway": sway.get("ap").sway if sway.get("ap") else False,
+                "level": sway.get("ap").level if sway.get("ap") else "none",
+            },
+        }
+
+        def _level_jp(level: str) -> str:
+            return {"small": "小", "medium": "中", "large": "大"}.get(level, "")
+
+        if sway.get("lateral") and sway["lateral"].sway:
+            m = sway["lateral"]
+            alerts.append(f"体幹：左右揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+        if sway.get("ap") and sway["ap"].sway:
+            m = sway["ap"]
+            alerts.append(f"体幹：前後揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
     frame = draw_analysis_results(frame, results, landmarks, disable_japanese=state.disable_jp)
@@ -299,7 +405,7 @@ def process_frame(
         state.dwell_time_detector,
         state.head_shake_detector,
         state.posture_monitor,
-        posture_alerts,
+        posture_alerts + alerts,
         landmarks,
         t,
     )
@@ -352,6 +458,7 @@ def run_pipeline(
                     head_shake_detector=state.head_shake_detector,
                     head_shake_alerts=state.last_head_alerts,
                     landmarks=state.last_landmarks,
+                    torso_sway=getattr(state, "last_sway_metrics", {}),
                     user_classifier=state.user_classifier,
                 )
 
@@ -404,6 +511,17 @@ def process_video(
     fps: float = 30.0,
     is_color: bool = True,
     preview: bool = True,
+    # 体幹揺れ（sway）パラメータ
+    sway_window_sec: float = 8.0,
+    sway_smooth_sec: float = 0.5,
+    sway_amp_th_lat: float = 10.0,
+    sway_amp_th_ap: float = 8.0,
+    sway_f_min: float = 0.2,
+    sway_f_max: float = 1.5,
+    sway_min_cycles: int = 3,
+    sway_on_sec: float = 1.2,
+    sway_off_sec: float = 0.7,
+    sway_use_staying_gate: bool = False,
 ) -> None:
     """
     Thin facade that wires:
@@ -434,6 +552,19 @@ def process_video(
         dwell_time_detector=dwell,
         head_shake_detector=head,
         posture_monitor=posture,
+        sway_detector=TorsoSwayDetector(
+            fps=fps,
+            window_sec=sway_window_sec,
+            smooth_sec=sway_smooth_sec,
+            amp_th_lat=sway_amp_th_lat,
+            amp_th_ap=sway_amp_th_ap,
+            f_min=sway_f_min,
+            f_max=sway_f_max,
+            min_cycles=sway_min_cycles,
+            on_sec=sway_on_sec,
+            off_sec=sway_off_sec,
+            use_staying_gate=sway_use_staying_gate,
+        ),
         disable_jp=disable_japanese,
     )
 

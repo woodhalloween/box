@@ -244,7 +244,7 @@ def draw_detection_info(
         all_alerts.extend([(alert, (255, 0, 255)) for alert in head_shake_alerts])  # Magenta
 
     for alert_text, color in all_alerts:
-        cv2.putText(frame, alert_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        frame = draw_japanese_text(frame, alert_text, (10, y_offset), 22, color)
         y_offset += 30
 
     # --- 滞在検知の情報を描画 ---
