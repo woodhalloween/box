@@ -1,61 +1,47 @@
-## 体幹の左右・前後揺れ検知 設計
+## 体幹の左右・前後揺れ検知 設計（簡素版）
 
 ### 目的
-- `Angle.LATERAL_TILT`（側屈）と `Angle.BODY_TILT`（体幹傾き）から、体幹の左右揺れ・前後揺れを検出する。
-- 常時評価（STAYINGゲートに依存せず）、ヒステリシスと最小往復回数で誤検知を抑制。
-- 日本語通知（PIL描画）とCSV出力を統合する。
+- 側屈 `Angle.LATERAL_TILT` と体幹傾き `Angle.BODY_TILT` から、体幹の左右/前後揺れをシンプルに検出。
+- 判定は「絶対角度がしきい値を連続フレーム数以上」でON、下回りが連続でOFF。
 
 ### 入力
 - 角度系列（フレーム毎）
   - 左右：`Angle.LATERAL_TILT` の角度（度）
-  - 前後：`ap_delta = 180 - BODY_TILT` を揺れ量とする（直立=0付近）
-- タイムスタンプ `t`（秒）、FPS
+  - 前後：`ap = |180 - BODY_TILT|` を揺れ量とする
+- タイムスタンプ `t`（秒）: 互換のため受け取るが使わない
 
-### 前処理
-- 平滑化：移動平均（推奨 0.5秒）
-- デトレンド：窓内中央値を減算（基準姿勢のずれを除去）
+### 判定
+- しきい値：左右 `th_lat`、前後 `th_ap`
+- ON: `val >= threshold` が `on_frames` 連続
+- OFF: `val < threshold` が `off_frames` 連続
+- None 入力は 0 とみなし OFF 側にカウント
 
-### 特徴量と判定
-- 振幅 A（度）：`0.5 * (P95 - P5)`
-- 周波数 f（Hz）：ゼロクロスから往復回数 cycles を求め、`f = cycles / duration`
-- 判定条件：`A >= A_th` かつ `f_min <= f <= f_max` かつ `cycles >= min_cycles`
-- ヒステリシス：
-  - ON確定：条件成立が連続 `t_on` 秒以上
-  - OFF確定：条件不成立が連続 `t_off` 秒以上
-
-### 推奨パラメータ（初期値）
-- FPS：30
-- 解析窓：8秒、平滑：0.5秒
-- 周波数帯：0.2–1.5 Hz、最小往復回数：3
-- 振幅しきい値：左右 10°、前後 8°
-- ヒステリシス：ON 1.2秒 / OFF 0.7秒
+### パラメータ初期値
+- `th_lat=10°`, `th_ap=8°`
+- `on_sec=1.2s`, `off_sec=0.7s`（FPSでフレーム換算）
 
 ### 出力
-- `{"lateral": {amp, freq, cycles, sway, level}, "ap": {...}}`
-- level 区分（例）：
-  - 左右：小(10–12°) / 中(12–18°) / 大(>18°)
-  - 前後：小(8–10°) / 中(10–15°) / 大(>15°)
-
-### 日本語通知（例）
-- 左右：「体幹：左右揺れ 中（10.4° / 0.6Hz）」
-- 前後：「体幹：前後揺れ 大（16.2° / 0.8Hz）（継続中）」
+- `{"lateral": bool, "ap": bool}`（CSV 互換のため amp/freq/cycles/level は 0/"none" で埋める）
 
 ### フローチャート
 ```mermaid
-graph TD
-  A[角度入力 LATERAL/BODY_TILT] --> B[平滑化]
-  B --> C[デトレンド]
-  C --> D[振幅A・周波数f・cycles算出]
-  D --> E{しきい値判定 + ヒステリシス}
-  E -->|成立| F[揺れ=ON/レベル判定]
-  E -->|不成立| G[揺れ=OFF]
-  F --> H[日本語通知/CSV]
-  G --> H
+flowchart LR
+I[角度入力] --> L[lat=|lateral|]
+I --> A[ap=|180-body_tilt|]
+L --> LB{>=th_lat}
+A --> AB{>=th_ap}
+LB -->|yes| L1[lat_over++ ; lat_under=0]
+LB -->|no|  L0[lat_under++ ; lat_over=0]
+AB -->|yes| A1[ap_over++ ; ap_under=0]
+AB -->|no|  A0[ap_under++ ; ap_over=0]
+L1 --> LS{!state && over>=on -> ON}
+L0 --> LE{state && under>=off -> OFF}
+A1 --> AS{!state && over>=on -> ON}
+A0 --> AE{state && under>=off -> OFF}
 ```
 
 ### 実装ポイント
-- 新規 `src/analysis/torso_sway_detector.py` に検出器を実装。
-- `video_processor` で更新し、`io/drawing.py` に日本語通知描画を追加。
-- `io/csv_writer.py` に `torso_sway_*` 列を追加し書き込み。
+- `src/analysis/torso_sway_detector.py` を簡素ロジックに置換。
+- `video_processor` ではフラグを受け取り、CSV ペイロードを 0/"none" で整形。
 
 

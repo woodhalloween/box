@@ -227,7 +227,7 @@ def draw_detection_info(
 ) -> np.ndarray:
     """検知情報をフレームに描画する（統合版）"""
     y_offset = 30
-    # --- 上部にアラートを描画 ---
+    # --- 上部にアラートを描画（体幹揺れは下部へ回す） ---
     all_alerts: list[tuple[str, tuple[int, int, int]]] = []
 
     # ユーザー分類/膝アラート
@@ -235,8 +235,13 @@ def draw_detection_info(
     if user_alert:
         all_alerts.append((user_alert, (0, 255, 255)))  # Yellow
 
-    # 姿勢アラート
-    all_alerts.extend([(alert, (0, 0, 255)) for alert in posture_alerts])  # Red
+    # 姿勢アラート（体幹揺れのメッセージは下部に描画するため除外）
+    def _is_sway_alert(msg: str) -> bool:
+        return msg.startswith("体幹：") or msg.startswith("体幹:")
+
+    bottom_sway_alerts = [a for a in posture_alerts if _is_sway_alert(a)]
+    top_posture_alerts = [a for a in posture_alerts if not _is_sway_alert(a)]
+    all_alerts.extend([(alert, (0, 0, 255)) for alert in top_posture_alerts])  # Red
 
     # 首振りアラート
     if head_shake_detector:
@@ -270,6 +275,13 @@ def draw_detection_info(
             f"Score: {status.get('avg_score', 0):.2f}"
         )
         cv2.putText(frame, status_text, (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+    # --- 下部に体幹揺れアラートを描画（重なり回避のため） ---
+    if bottom_sway_alerts:
+        base_y = frame.shape[0] - 60  # 姿勢監視ステータスの少し上
+        for i, alert_text in enumerate(bottom_sway_alerts):
+            y = base_y - i * 30
+            frame = draw_japanese_text(frame, alert_text, (10, y), 22, (0, 0, 255))  # Red
 
     # --- 首振り情報を描画 (詳細版) ---
     if head_shake_detector and landmarks is not None:

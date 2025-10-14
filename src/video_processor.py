@@ -218,7 +218,7 @@ class VideoProcessor:
         head_shake_results = self.head_shake_detector.update(landmarks, timestamp, frame_count)
         analysis_results.update(head_shake_results)
         head_shake_alerts = self.head_shake_detector.check_alerts(timestamp)
-        # Torso sway metrics and alerts (optional in tests)
+        # Torso sway flags and alerts (optional in tests)
         sway_alerts: list[str] = []
         torso_sway_payload: dict[str, dict] = {}
         if hasattr(self, "sway_detector") and self.sway_detector is not None:
@@ -234,36 +234,33 @@ class VideoProcessor:
             if hasattr(self.dwell_time_detector, "get_current_status"):
                 status = self.dwell_time_detector.get_current_status() or {}
                 hip_state = status.get("state", None)
-            sway_metrics = self.sway_detector.update(
+            sway_flags = self.sway_detector.update(
                 t=timestamp,
                 lateral_deg=lateral_angle,
                 body_tilt_deg=body_tilt_angle,
                 hip_state=hip_state,
             )
+            # Alerts: message without level/amp/freq (simplified)
+            if sway_flags.get("lateral"):
+                sway_alerts.append("体幹：左右揺れ")
+            if sway_flags.get("ap"):
+                sway_alerts.append("体幹：前後揺れ")
 
-            def _level_jp(level: str) -> str:
-                return {"small": "小", "medium": "中", "large": "大"}.get(level, "")
-
-            if sway_metrics.get("lateral") and sway_metrics["lateral"].sway:
-                m = sway_metrics["lateral"]
-                sway_alerts.append(f"体幹：左右揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
-            if sway_metrics.get("ap") and sway_metrics["ap"].sway:
-                m = sway_metrics["ap"]
-                sway_alerts.append(f"体幹：前後揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+            # CSV payload requires fixed keys; fill zeros and boolean flags
             torso_sway_payload = {
                 "lateral": {
-                    "amp": sway_metrics.get("lateral").amp if sway_metrics.get("lateral") else 0.0,
-                    "freq": sway_metrics.get("lateral").freq if sway_metrics.get("lateral") else 0.0,
-                    "cycles": sway_metrics.get("lateral").cycles if sway_metrics.get("lateral") else 0,
-                    "sway": sway_metrics.get("lateral").sway if sway_metrics.get("lateral") else False,
-                    "level": sway_metrics.get("lateral").level if sway_metrics.get("lateral") else "none",
+                    "amp": 0.0,
+                    "freq": 0.0,
+                    "cycles": 0,
+                    "sway": bool(sway_flags.get("lateral", False)),
+                    "level": "none",
                 },
                 "ap": {
-                    "amp": sway_metrics.get("ap").amp if sway_metrics.get("ap") else 0.0,
-                    "freq": sway_metrics.get("ap").freq if sway_metrics.get("ap") else 0.0,
-                    "cycles": sway_metrics.get("ap").cycles if sway_metrics.get("ap") else 0,
-                    "sway": sway_metrics.get("ap").sway if sway_metrics.get("ap") else False,
-                    "level": sway_metrics.get("ap").level if sway_metrics.get("ap") else "none",
+                    "amp": 0.0,
+                    "freq": 0.0,
+                    "cycles": 0,
+                    "sway": bool(sway_flags.get("ap", False)),
+                    "level": "none",
                 },
             }
 
@@ -363,38 +360,34 @@ def process_frame(
         if hasattr(state.dwell_time_detector, "get_current_status"):
             st = state.dwell_time_detector.get_current_status() or {}
             hip_state = st.get("state", None)
-        sway = state.sway_detector.update(
+        sway_flags = state.sway_detector.update(
             t=t,
             lateral_deg=lateral_angle,
             body_tilt_deg=body_tilt_angle,
             hip_state=hip_state,
         )
+        # Persist last sway metrics for CSV writer with fixed keys
         state.last_sway_metrics = {
             "lateral": {
-                "amp": sway.get("lateral").amp if sway.get("lateral") else 0.0,
-                "freq": sway.get("lateral").freq if sway.get("lateral") else 0.0,
-                "cycles": sway.get("lateral").cycles if sway.get("lateral") else 0,
-                "sway": sway.get("lateral").sway if sway.get("lateral") else False,
-                "level": sway.get("lateral").level if sway.get("lateral") else "none",
+                "amp": 0.0,
+                "freq": 0.0,
+                "cycles": 0,
+                "sway": bool(sway_flags.get("lateral", False)),
+                "level": "none",
             },
             "ap": {
-                "amp": sway.get("ap").amp if sway.get("ap") else 0.0,
-                "freq": sway.get("ap").freq if sway.get("ap") else 0.0,
-                "cycles": sway.get("ap").cycles if sway.get("ap") else 0,
-                "sway": sway.get("ap").sway if sway.get("ap") else False,
-                "level": sway.get("ap").level if sway.get("ap") else "none",
+                "amp": 0.0,
+                "freq": 0.0,
+                "cycles": 0,
+                "sway": bool(sway_flags.get("ap", False)),
+                "level": "none",
             },
         }
 
-        def _level_jp(level: str) -> str:
-            return {"small": "小", "medium": "中", "large": "大"}.get(level, "")
-
-        if sway.get("lateral") and sway["lateral"].sway:
-            m = sway["lateral"]
-            alerts.append(f"体幹：左右揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
-        if sway.get("ap") and sway["ap"].sway:
-            m = sway["ap"]
-            alerts.append(f"体幹：前後揺れ {_level_jp(m.level)}（{m.amp:.1f}° / {m.freq:.2f}Hz）")
+        if sway_flags.get("lateral"):
+            alerts.append("体幹：左右揺れ")
+        if sway_flags.get("ap"):
+            alerts.append("体幹：前後揺れ")
 
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
