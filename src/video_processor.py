@@ -498,7 +498,11 @@ def process_video(
     )
 
     # 2) CSV/Video sinks（既存の setup_* を利用）
-    csv_writer = setup_csv_writer(open(output_csv_path, "w", newline="", encoding="utf-8")) if output_csv_path else None  # noqa: SIM115
+    csv_file = None
+    csv_writer = None
+    if output_csv_path:
+        csv_file = open(output_csv_path, "w", newline="", encoding="utf-8")  # noqa: SIM115
+        csv_writer = setup_csv_writer(csv_file)
     # VideoWriter は最初のフレーム形状で遅延初期化（ソース実寸に一致させる）
     video_writer = None
 
@@ -538,18 +542,23 @@ def process_video(
         frame_iter = _opencv_iter(video_path)
 
     # 5) Run
-    rp = globals().get("run_pipeline")
-    if not callable(rp):
-        raise RuntimeError("run_pipeline is not callable")
-    rp(
-        frame_iter,
-        csv_writer=csv_writer,
-        video_writer=video_writer,
-        state=state,
-        preview=preview,
-        window_name="Integrated Analysis",
-        output_video_path=output_video_path,
-        writer_fps=fps,
-        total_frames=total_frames,
-        show_progress=show_progress,
-    )
+    try:
+        rp = globals().get("run_pipeline")
+        if not callable(rp):
+            raise RuntimeError("run_pipeline is not callable")
+        rp(
+            frame_iter,
+            csv_writer=csv_writer,
+            video_writer=video_writer,
+            state=state,
+            preview=preview,
+            window_name="Integrated Analysis",
+            output_video_path=output_video_path,
+            writer_fps=fps,
+            total_frames=total_frames,
+            show_progress=show_progress,
+        )
+    finally:
+        # 明示的にCSVファイルをクローズする
+        if csv_file is not None and hasattr(csv_file, "close"):
+            csv_file.close()
