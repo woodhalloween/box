@@ -1,10 +1,5 @@
 """
 Test cases for hand_raise_refactored.py
-
-Comprehensive test coverage for:
-- get_status() method
-- _serialize_hand_state() method
-- reset() method
 """
 
 import numpy as np
