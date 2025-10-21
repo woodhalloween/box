@@ -73,6 +73,17 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
         "long_stay_alert",
         "hip_detector_state",
         "user_classifier_alert",
+        # --- Torso sway metrics (lateral/AP) ---
+        "torso_sway_lat_amp",
+        "torso_sway_lat_freq",
+        "torso_sway_lat_cycles",
+        "torso_sway_lat_flag",
+        "torso_sway_lat_level",
+        "torso_sway_ap_amp",
+        "torso_sway_ap_freq",
+        "torso_sway_ap_cycles",
+        "torso_sway_ap_flag",
+        "torso_sway_ap_level",
     ]
     landmark_fieldnames = []
     for landmark in mp.solutions.pose.PoseLandmark:
@@ -99,6 +110,7 @@ def write_results_to_csv(
     hand_statuses: dict[str, bool] | None,
     landmarks: np.ndarray | None,
     user_classifier: UserClassifier | None = None,
+    torso_sway: dict | None = None,
 ):
     """結果をCSVに書き込む"""
     row: dict[str, Any] = {"timestamp": timestamp, "frame_number": frame_number}
@@ -173,6 +185,24 @@ def write_results_to_csv(
     # User classifier alert
     user_classifier_alert = user_classifier.get_current_alert() if user_classifier else None
     row["user_classifier_alert"] = user_classifier_alert or ""
+
+    # Torso sway metrics (optional)
+    lat = (torso_sway or {}).get("lateral", {})
+    ap = (torso_sway or {}).get("ap", {})
+    row.update(
+        {
+            "torso_sway_lat_amp": float(lat.get("amp", 0.0) or 0.0),
+            "torso_sway_lat_freq": float(lat.get("freq", 0.0) or 0.0),
+            "torso_sway_lat_cycles": int(lat.get("cycles", 0) or 0),
+            "torso_sway_lat_flag": bool(lat.get("sway", False)),
+            "torso_sway_lat_level": str(lat.get("level", "none")),
+            "torso_sway_ap_amp": float(ap.get("amp", 0.0) or 0.0),
+            "torso_sway_ap_freq": float(ap.get("freq", 0.0) or 0.0),
+            "torso_sway_ap_cycles": int(ap.get("cycles", 0) or 0),
+            "torso_sway_ap_flag": bool(ap.get("sway", False)),
+            "torso_sway_ap_level": str(ap.get("level", "none")),
+        }
+    )
 
     if landmarks is not None:
         for landmark in mp.solutions.pose.PoseLandmark:

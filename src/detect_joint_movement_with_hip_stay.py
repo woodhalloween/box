@@ -643,6 +643,22 @@ def main():
         help="Grace period for movement detection (seconds).",
     )
 
+    # ---- Torso sway (左右/前後揺れ) ----
+    parser.add_argument("--sway-window-sec", type=float, default=8.0, help="Sway analysis window length (sec).")
+    parser.add_argument("--sway-smooth-sec", type=float, default=0.5, help="Sway smoothing window (sec).")
+    parser.add_argument("--sway-amp-th-lat", type=float, default=10.0, help="Lateral sway amplitude threshold (deg).")
+    parser.add_argument("--sway-amp-th-ap", type=float, default=8.0, help="AP sway amplitude threshold (deg).")
+    parser.add_argument("--sway-f-min", type=float, default=0.2, help="Sway min frequency (Hz).")
+    parser.add_argument("--sway-f-max", type=float, default=1.5, help="Sway max frequency (Hz).")
+    parser.add_argument("--sway-min-cycles", type=int, default=3, help="Sway min cycles in window.")
+    parser.add_argument("--sway-on-sec", type=float, default=1.2, help="Hysteresis ON duration (sec).")
+    parser.add_argument("--sway-off-sec", type=float, default=0.7, help="Hysteresis OFF duration (sec).")
+    parser.add_argument(
+        "--sway-use-staying-gate",
+        action="store_true",
+        help="Enable gating sway detection only when hip STAYING.",
+    )
+
     # ---- User classifier (knee angle etc. if used downstream) ----
     parser.add_argument(
         "--uc-threshold-deg",
@@ -702,6 +718,17 @@ def main():
         # user classifier (knee angle)
         uc_threshold_deg=args.uc_threshold_deg,
         uc_moving_window_seconds=args.uc_moving_window_seconds,
+        # sway parameters
+        sway_window_sec=args.sway_window_sec,
+        sway_smooth_sec=args.sway_smooth_sec,
+        sway_amp_th_lat=args.sway_amp_th_lat,
+        sway_amp_th_ap=args.sway_amp_th_ap,
+        sway_f_min=args.sway_f_min,
+        sway_f_max=args.sway_f_max,
+        sway_min_cycles=args.sway_min_cycles,
+        sway_on_sec=args.sway_on_sec,
+        sway_off_sec=args.sway_off_sec,
+        sway_use_staying_gate=args.sway_use_staying_gate,
         # source switching / geometry
         input_mode=args.input_mode,
         width=args.width,

@@ -103,16 +103,70 @@ def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
     return image
 
 
+def draw_torso_indicators(image: np.ndarray, landmarks: np.ndarray, confidence_threshold: float = 0.5) -> np.ndarray:
+    """体幹線と垂直基準線を描画する。
+
+    Args:
+        image: 描画対象の画像
+        landmarks: ポーズランドマーク (33, 4) [x, y, z, visibility]
+        confidence_threshold: 信頼度の閾値
+
+    Returns:
+        描画済みの画像
+    """
+    if not image.flags.writeable:
+        image = image.copy()
+
+    h, w, _ = image.shape
+
+    try:
+        # 肩と腰のランドマークを取得
+        left_shoulder = landmarks[PoseLandmark.LEFT_SHOULDER.value]
+        right_shoulder = landmarks[PoseLandmark.RIGHT_SHOULDER.value]
+        left_hip = landmarks[PoseLandmark.LEFT_HIP.value]
+        right_hip = landmarks[PoseLandmark.RIGHT_HIP.value]
+
+        # 信頼度チェック
+        if (
+            left_shoulder[3] < confidence_threshold
+            or right_shoulder[3] < confidence_threshold
+            or left_hip[3] < confidence_threshold
+            or right_hip[3] < confidence_threshold
+        ):
+            return image
+
+        # 肩と腰の中点を計算（画素座標）
+        shoulder_mid_x = int((left_shoulder[0] + right_shoulder[0]) / 2 * w)
+        shoulder_mid_y = int((left_shoulder[1] + right_shoulder[1]) / 2 * h)
+        hip_mid_x = int((left_hip[0] + right_hip[0]) / 2 * w)
+        hip_mid_y = int((left_hip[1] + right_hip[1]) / 2 * h)
+
+        # 体幹線を描画（肩中点から腰中点へ）
+        cv2.line(image, (shoulder_mid_x, shoulder_mid_y), (hip_mid_x, hip_mid_y), (0, 255, 255), 3)  # 黄色
+
+        # 垂直基準線を描画（腰中点から真下へ）
+        vertical_length = int(h * 0.2)  # 画面高さの20%
+        cv2.line(image, (hip_mid_x, hip_mid_y), (hip_mid_x, hip_mid_y + vertical_length), (255, 0, 255), 2)  # マゼンタ
+
+        # 肩中点と腰中点に円を描画
+        cv2.circle(image, (shoulder_mid_x, shoulder_mid_y), 6, (0, 255, 255), -1)  # 黄色
+        cv2.circle(image, (hip_mid_x, hip_mid_y), 6, (0, 255, 255), -1)  # 黄色
+
+    except (IndexError, TypeError):
+        pass  # エラーが発生した場合は何もしない
+
+    return image
+
+
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
-    hand_statuses: dict[str, bool] | None,
     landmarks: np.ndarray | None,
     fps: float = 0.0,
     disable_japanese: bool = False,
 ) -> np.ndarray:
     """分析結果を日本語で画像に描画する。"""
-    h, w, _ = image.shape
+    _h, w, _ = image.shape
     y_offset = 30
 
     img_with_text = image.copy()
@@ -123,27 +177,10 @@ def draw_analysis_results(
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
     # --- ここまで ---
 
-    if hand_statuses is not None:
-        left_status = hand_statuses.get("left_hand_raised", False)
-        right_status = hand_statuses.get("right_hand_raised", False)
-
-        left_text = "左手 挙手" if not disable_japanese else "Left Hand Raised"
-        right_text = "右手 挙手" if not disable_japanese else "Right Hand Raised"
-
-        left_color = (0, 255, 0) if left_status else (128, 128, 128)
-        right_color = (0, 255, 0) if right_status else (128, 128, 128)
-
-        if disable_japanese:
-            cv2.putText(img_with_text, left_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, left_color, 2)
-        else:
-            img_with_text = draw_japanese_text(img_with_text, left_text, (10, y_offset), 20, left_color)
-        y_offset += 30
-
-        if disable_japanese:
-            cv2.putText(img_with_text, right_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, right_color, 2)
-        else:
-            img_with_text = draw_japanese_text(img_with_text, right_text, (10, y_offset), 20, right_color)
-        y_offset += 30
+    # --- 体幹線と垂直基準線を描画 ---
+    if landmarks is not None:
+        img_with_text = draw_torso_indicators(img_with_text, landmarks)
+    # --- ここまで ---
 
     for angle, data in results.items():
         angle_val = data["angle"]
@@ -190,7 +227,7 @@ def draw_detection_info(
 ) -> np.ndarray:
     """検知情報をフレームに描画する（統合版）"""
     y_offset = 30
-    # --- 上部にアラートを描画 ---
+    # --- 上部にアラートを描画（体幹揺れは下部へ回す） ---
     all_alerts: list[tuple[str, tuple[int, int, int]]] = []
 
     # ユーザー分類/膝アラート
@@ -198,8 +235,13 @@ def draw_detection_info(
     if user_alert:
         all_alerts.append((user_alert, (0, 255, 255)))  # Yellow
 
-    # 姿勢アラート
-    all_alerts.extend([(alert, (0, 0, 255)) for alert in posture_alerts])  # Red
+    # 姿勢アラート（体幹揺れのメッセージは下部に描画するため除外）
+    def _is_sway_alert(msg: str) -> bool:
+        return msg.startswith("体幹：") or msg.startswith("体幹:")
+
+    bottom_sway_alerts = [a for a in posture_alerts if _is_sway_alert(a)]
+    top_posture_alerts = [a for a in posture_alerts if not _is_sway_alert(a)]
+    all_alerts.extend([(alert, (0, 0, 255)) for alert in top_posture_alerts])  # Red
 
     # 首振りアラート
     if head_shake_detector:
@@ -207,7 +249,7 @@ def draw_detection_info(
         all_alerts.extend([(alert, (255, 0, 255)) for alert in head_shake_alerts])  # Magenta
 
     for alert_text, color in all_alerts:
-        cv2.putText(frame, alert_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        frame = draw_japanese_text(frame, alert_text, (10, y_offset), 22, color)
         y_offset += 30
 
     # --- 滞在検知の情報を描画 ---
@@ -233,6 +275,13 @@ def draw_detection_info(
             f"Score: {status.get('avg_score', 0):.2f}"
         )
         cv2.putText(frame, status_text, (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+    # --- 下部に体幹揺れアラートを描画（重なり回避のため） ---
+    if bottom_sway_alerts:
+        base_y = frame.shape[0] - 60  # 姿勢監視ステータスの少し上
+        for i, alert_text in enumerate(bottom_sway_alerts):
+            y = base_y - i * 30
+            frame = draw_japanese_text(frame, alert_text, (10, y), 22, (0, 0, 255))  # Red
 
     # --- 首振り情報を描画 (詳細版) ---
     if head_shake_detector and landmarks is not None:

@@ -104,6 +104,17 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
         "is_long_stay",
         "long_stay_alert",
         "hip_detector_state",
+        # Parity with src/io/csv_writer: include torso sway metrics if used via this writer
+        "torso_sway_lat_amp",
+        "torso_sway_lat_freq",
+        "torso_sway_lat_cycles",
+        "torso_sway_lat_flag",
+        "torso_sway_lat_level",
+        "torso_sway_ap_amp",
+        "torso_sway_ap_freq",
+        "torso_sway_ap_cycles",
+        "torso_sway_ap_flag",
+        "torso_sway_ap_level",
     ]
     landmark_fieldnames = []
     for landmark in mp.solutions.pose.PoseLandmark:
@@ -127,6 +138,8 @@ def write_results_to_csv(
     head_shake_detector: HeadShakeDetector | None,
     head_shake_alerts: list[str] | None,
     landmarks: np.ndarray | None,
+    *,
+    torso_sway: dict | None = None,
 ):
     """結果をCSVに書き込む"""
     row: dict[str, Any] = {"timestamp": timestamp, "frame_number": frame_number}
@@ -186,6 +199,24 @@ def write_results_to_csv(
             "head_shake_horizontal_detected": head_shake_status.get("horizontal_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_vertical_detected": head_shake_status.get("vertical_state", "HEAD_STATIC") != "HEAD_STATIC",
             "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
+        }
+    )
+
+    # Optional torso sway metrics (maintain parity with src/io/csv_writer)
+    lat = (torso_sway or {}).get("lateral", {})
+    ap = (torso_sway or {}).get("ap", {})
+    row.update(
+        {
+            "torso_sway_lat_amp": float(lat.get("amp", 0.0) or 0.0),
+            "torso_sway_lat_freq": float(lat.get("freq", 0.0) or 0.0),
+            "torso_sway_lat_cycles": int(lat.get("cycles", 0) or 0),
+            "torso_sway_lat_flag": bool(lat.get("sway", False)),
+            "torso_sway_lat_level": str(lat.get("level", "none")),
+            "torso_sway_ap_amp": float(ap.get("amp", 0.0) or 0.0),
+            "torso_sway_ap_freq": float(ap.get("freq", 0.0) or 0.0),
+            "torso_sway_ap_cycles": int(ap.get("cycles", 0) or 0),
+            "torso_sway_ap_flag": bool(ap.get("sway", False)),
+            "torso_sway_ap_level": str(ap.get("level", "none")),
         }
     )
 
