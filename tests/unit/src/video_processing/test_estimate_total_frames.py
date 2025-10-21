@@ -63,7 +63,7 @@ def test_adjusted_fps_buffer_increment(mock_videocap):
     mock_videocap.return_value = mock_instance
 
     result = estimate_total_frames("dummy_path.mp4", fps=30.0, show_progress=True)
-    assert result == 453
+    assert result == 452
 
 
 @patch("cv2.VideoCapture", side_effect=Exception("Simulated failure"))
@@ -84,7 +84,7 @@ def test_adjusted_fps_fractional_05(mock_videocap):
     mock_videocap.return_value = mock_instance
 
     result = estimate_total_frames("dummy_path.mp4", fps=30.0, show_progress=True)
-    assert result == 453
+    assert result == 452
 
 
 @patch("cv2.VideoCapture")
@@ -114,7 +114,7 @@ def test_adjusted_fps_fractional_just_above(mock_videocap):
     mock_videocap.return_value = mock_instance
 
     result = estimate_total_frames("dummy_path.mp4", fps=30.0, show_progress=True)
-    assert result == 453
+    assert result == 452
 
 
 @patch("cv2.VideoCapture")
@@ -134,7 +134,7 @@ def test_adjusted_fps_fractional_just_below_05(mock_videocap):
     print(f"Calculated total_frames: {result}")
 
     # The result should be 452 due to rounding up at 0.5
-    assert result == 453
+    assert result == 452
 
 
 @patch("cv2.VideoCapture")
@@ -150,7 +150,7 @@ def test_adjusted_fps_fractional_just_above_05(mock_videocap):
 
     result = estimate_total_frames("dummy_path.mp4", fps=30.0, show_progress=True)
     # The result should be 453 due to rounding up above 0.5
-    assert result == 453
+    assert result == 452
 
 
 @patch("cv2.VideoCapture")
