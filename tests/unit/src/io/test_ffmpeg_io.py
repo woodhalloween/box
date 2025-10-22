@@ -83,8 +83,8 @@ def test_build_ffmpeg_cmd_color_with_scaling_and_fps():
         is_color=True,
         additional_input_args=["-re"],  # arbitrary extra
     )
-    # Structure expectations
-    assert cmd[0] == "ffmpeg"
+    # Structure expectations - cmd[0] should be the FFmpeg executable path
+    assert cmd[0].endswith("ffmpeg") or cmd[0] == "ffmpeg"
     assert "-hide_banner" in cmd and "-loglevel" in cmd
     # Input and extras present in correct order
     idx_i = cmd.index("-i")
@@ -587,7 +587,7 @@ def test_build_ffmpeg_cmd_debug_print_enabled(monkeypatch, capsys):
     # Verify the debug message was printed
     assert "FFmpeg CMD:" in captured.out
     assert "test.mp4" in captured.out
-    assert "ffmpeg" in captured.out
+    assert "ffmpeg" in captured.out or "/ffmpeg" in captured.out
     assert "-hide_banner" in captured.out
     assert "-loglevel" in captured.out
     assert "error" in captured.out
