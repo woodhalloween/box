@@ -221,12 +221,18 @@ class VideoProcessor:
         ):
             print(f"[{timestamp:.1f}s] 通知: 指定エリアのお客様対応をお願いします。")
 
+        # Hand raise detection
         hand_statuses = None
-        if hasattr(self, "hand_raise_detector") and self.hand_raise_detector:
-            try:
-                hand_statuses = self.hand_raise_detector.detect(landmarks)
-            except Exception:
-                hand_statuses = None
+        try:
+            hand_statuses = self.hand_raise_detector.detect(landmarks)
+        except (IndexError, TypeError, ValueError) as e:
+            # Handle specific expected exceptions from landmark processing
+            print(f"Warning: Hand raise detection failed due to landmark data issue: {e}")
+            hand_statuses = None
+        except Exception as e:
+            # Log unexpected errors for debugging
+            print(f"Error: Unexpected error in hand raise detection: {e}")
+            hand_statuses = None
 
         write_results_to_csv(
             csv_writer=self.csv_writer,
@@ -312,8 +318,17 @@ def process_frame(
     alerts.extend(head_alerts)
     state.last_head_alerts = head_alerts
 
-    # TODO: Hand raise
-    hand_statuses = state.hand_raise_detector.detect(landmarks=landmarks)
+    # Hand raise detection
+    try:
+        hand_statuses = state.hand_raise_detector.detect(landmarks=landmarks)
+    except (IndexError, TypeError, ValueError) as e:
+        # Handle specific expected exceptions from landmark processing
+        print(f"Warning: Hand raise detection failed due to landmark data issue: {e}")
+        hand_statuses = None
+    except Exception as e:
+        # Log unexpected errors for debugging
+        print(f"Error: Unexpected error in hand raise detection: {e}")
+        hand_statuses = None
     state.last_hand_statuses = hand_statuses
 
     # Drawing (annotation only; I/Oは上位で)
