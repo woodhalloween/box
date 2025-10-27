@@ -72,9 +72,9 @@ def test_draw_analysis_results(mocker, dummy_image):
         Angle.BODY_TILT: {"angle": 10.0, "state": MovementState.FORWARD_TILT},
     }
 
-    draw_analysis_results(dummy_image, results, landmarks, fps=30.0)
+    draw_analysis_results(dummy_image, results, None, landmarks, fps=30.0)
 
-    # FPS表示 + 結果2つの計3回呼ばれる
+    # FPS表示 + 結果2つの計3回呼ばれる（hand_statusesがNoneなので手の挙上表示なし）
     assert mock_draw_jp.call_count == 3
 
 
@@ -86,9 +86,9 @@ def test_draw_analysis_results_english(mocker, dummy_image):
 
     results = {Angle.RIGHT_ELBOW: {"angle": 90.0, "state": MovementState.FLEXION}}
 
-    draw_analysis_results(dummy_image, results, landmarks, disable_japanese=True)
+    draw_analysis_results(dummy_image, results, None, landmarks, disable_japanese=True)
 
-    # 日本語描画はFPS表示の1回だけ呼ばれる
+    # 日本語描画はFPS表示の1回だけ呼ばれる（hand_statusesがNoneなので手の挙上表示なし）
     mock_draw_jp.assert_called_once()
     # 英語の結果表示でputTextが1回呼ばれる
     mock_put_text.assert_called_once()

@@ -96,7 +96,17 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
 
     # Capture run_pipeline inputs
     def fake_run_pipeline(
-        frame_iter, *, csv_writer, video_writer, state, preview, window_name, output_video_path=None, writer_fps=30.0
+        frame_iter,
+        *,
+        csv_writer,
+        video_writer,
+        state,
+        preview,
+        window_name,
+        output_video_path=None,
+        writer_fps=30.0,
+        total_frames=None,
+        show_progress=False,
     ):
         # Consume one item to make sure it's iterable
         first = next(frame_iter)
@@ -110,6 +120,8 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
             "disable_jp": state.disable_jp,
             "output_video_path": output_video_path,
             "writer_fps": writer_fps,
+            "total_frames": total_frames,
+            "show_progress": show_progress,
         }
 
     monkeypatch.setattr("src.video_processor.run_pipeline", fake_run_pipeline)
@@ -163,6 +175,8 @@ def test_process_video_ffmpeg_default_branch(monkeypatch, tmp_path):
     assert calls["run"]["disable_jp"] is True  # from disable_japanese
     assert calls["run"]["output_video_path"].endswith("out.mp4")
     assert calls["run"]["writer_fps"] == 59.94
+    assert calls["run"]["total_frames"] is None  # show_progress=False by default
+    assert calls["run"]["show_progress"] is False  # default value
 
 
 def test_process_video_opencv_fallback_when_no_ffmpeg(monkeypatch):

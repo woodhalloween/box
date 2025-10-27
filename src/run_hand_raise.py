@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from src.analysis.dwell_time_detector import DwellTimeDetector
 from src.config import AppConfig
-from src.detectors.hand_raise_detector import HandRaiseDetector
+from src.detectors.hand_raise_refactored import HandRaiseDetector
 from src.drawing_utils import (
     draw_dwell_status,
     draw_hand_raise_status,

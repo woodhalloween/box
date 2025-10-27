@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 
@@ -6,6 +7,42 @@ import cv2
 import numpy as np
 
 # ---------- NEW: portable helpers for camera capture ----------
+
+
+def _find_ffmpeg_executable() -> str:
+    """
+    Find the FFmpeg executable path, handling cases where GUI apps don't have full PATH access.
+
+    This function tries multiple strategies to locate FFmpeg:
+    1. Check common installation paths (especially for macOS Homebrew)
+    2. Use shutil.which() to find in PATH
+    3. Fall back to 'ffmpeg' if nothing else works
+
+    Returns
+    -------
+    str
+        Path to FFmpeg executable, or 'ffmpeg' as fallback
+    """
+    # Common FFmpeg installation paths
+    common_paths = [
+        "/opt/homebrew/bin/ffmpeg",  # macOS Apple Silicon Homebrew
+        "/usr/local/bin/ffmpeg",  # macOS Intel Homebrew / Linux
+        "/usr/bin/ffmpeg",  # Linux system package
+        "C:\\ffmpeg\\bin\\ffmpeg.exe",  # Windows common installation
+    ]
+
+    # Check common paths first
+    for path in common_paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+
+    # Try to find in PATH
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+
+    # Fallback to 'ffmpeg' (will work if it's in PATH)
+    return "ffmpeg"
 
 
 def _norm_os_key(os_name: str) -> str:
@@ -307,13 +344,15 @@ def _build_ffmpeg_cmd(
         vf_parts.append(f"fps={fps}")
     vf = ",".join(vf_parts) if vf_parts else "null"
 
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+    ffmpeg_executable = _find_ffmpeg_executable()
+    cmd = [ffmpeg_executable, "-hide_banner", "-loglevel", "error"]
     if additional_input_args:
         cmd += additional_input_args
     cmd += ["-i", ffmpeg_input, "-an", "-vf", vf, "-pix_fmt", pix_fmt, "-f", "rawvideo", "pipe:1"]
 
     # Optional: print the exact command when debugging
     if os.environ.get("DEBUG_FFMPEG") == "1":
+        print(f"FFmpeg executable: {ffmpeg_executable}")
         print("FFmpeg CMD:", " ".join(str(x) for x in cmd))
 
     return cmd

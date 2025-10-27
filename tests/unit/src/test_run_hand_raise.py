@@ -994,7 +994,7 @@ def test_src_module_entrypoint_invokes_main(monkeypatch, tmp_path):
 
     monkeypatch.setattr(run_hand_raise.cv2, "VideoCapture", capture_factory)
     monkeypatch.setattr("src.pose_estimator.PoseEstimator", pose_factory)
-    monkeypatch.setattr("src.detectors.hand_raise_detector.HandRaiseDetector", lambda **_: DummyHandRaiseDetector())
+    monkeypatch.setattr("src.detectors.hand_raise_refactored.HandRaiseDetector", lambda **_: DummyHandRaiseDetector())
     monkeypatch.setattr("src.analysis.dwell_time_detector.DwellTimeDetector", lambda **_: DummyDwellDetector())
     monkeypatch.setattr("src.drawing_utils.draw_hand_raise_status", lambda image, statuses: image)
     monkeypatch.setattr("src.drawing_utils.draw_dwell_status", lambda image, status, alert: image)

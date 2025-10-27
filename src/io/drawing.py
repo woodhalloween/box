@@ -106,6 +106,7 @@ def draw_landmarks(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
+    hand_statuses: dict[str, bool] | None,
     landmarks: np.ndarray | None,
     fps: float = 0.0,
     disable_japanese: bool = False,
@@ -121,6 +122,28 @@ def draw_analysis_results(
     # 右上に白で描画
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
     # --- ここまで ---
+
+    if hand_statuses is not None:
+        left_status = hand_statuses.get("left_hand_raised", False)
+        right_status = hand_statuses.get("right_hand_raised", False)
+
+        left_text = "左手 挙手" if not disable_japanese else "Left Hand Raised"
+        right_text = "右手 挙手" if not disable_japanese else "Right Hand Raised"
+
+        left_color = (0, 255, 0) if left_status else (128, 128, 128)
+        right_color = (0, 255, 0) if right_status else (128, 128, 128)
+
+        if disable_japanese:
+            cv2.putText(img_with_text, left_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, left_color, 2)
+        else:
+            img_with_text = draw_japanese_text(img_with_text, left_text, (10, y_offset), 20, left_color)
+        y_offset += 30
+
+        if disable_japanese:
+            cv2.putText(img_with_text, right_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, right_color, 2)
+        else:
+            img_with_text = draw_japanese_text(img_with_text, right_text, (10, y_offset), 20, right_color)
+        y_offset += 30
 
     for angle, data in results.items():
         angle_val = data["angle"]

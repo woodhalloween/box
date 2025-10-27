@@ -14,6 +14,7 @@ from ..analysis.dwell_time_detector import DwellTimeDetector
 from ..analysis.posture_monitor import PostureMonitor
 from ..analysis.user_classifier import UserClassifier
 from ..definitions import Angle, MovementState
+from ..detectors import HandRaiseDetector
 from ..head_shake_detector import HeadShakeDetector
 
 
@@ -58,6 +59,8 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
         "head_shake_horizontal_detected",
         "head_shake_vertical_detected",
         "head_shake_alerts",
+        "left_hand_raised",
+        "right_hand_raised",
         "is_forward_leaning",
         "forward_lean_score",
         "forward_lean_ratio",
@@ -92,6 +95,8 @@ def write_results_to_csv(
     dwell_alert: str | None,
     head_shake_detector: HeadShakeDetector | None,
     head_shake_alerts: list[str] | None,
+    hand_raise_detector: HandRaiseDetector | None,
+    hand_statuses: dict[str, bool] | None,
     landmarks: np.ndarray | None,
     user_classifier: UserClassifier | None = None,
 ):
@@ -147,6 +152,7 @@ def write_results_to_csv(
         }
     )
 
+    # Head Shake Status
     head_shake_status = head_shake_detector.get_status() if head_shake_detector else {}
     row.update(
         {
@@ -155,6 +161,14 @@ def write_results_to_csv(
             "head_shake_alerts": "; ".join(head_shake_alerts) if head_shake_alerts else "",
         }
     )
+
+    # Hand Raise Status
+    if hand_statuses is not None:
+        row["left_hand_raised"] = bool(hand_statuses.get("left_hand_raised", False))
+        row["right_hand_raised"] = bool(hand_statuses.get("right_hand_raised", False))
+    else:
+        row["left_hand_raised"] = False
+        row["right_hand_raised"] = False
 
     # User classifier alert
     user_classifier_alert = user_classifier.get_current_alert() if user_classifier else None

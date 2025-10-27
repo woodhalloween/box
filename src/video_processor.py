@@ -24,16 +24,19 @@ import csv  # CSV writer 型注釈に使う（既存の setup_csv_writer を利�
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
 from .analysis.user_classifier import UserClassifier
+from .detectors.hand_raise_refactored import HandRaiseDetector
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
 from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
 from .pose_estimator import PoseEstimator
+from .video_processing.estimate_total_frames import estimate_total_frames
 
 
 @dataclass
@@ -43,11 +46,14 @@ class PipelineState:
     user_classifier: UserClassifier
     dwell_time_detector: DwellTimeDetector
     head_shake_detector: HeadShakeDetector
+    hand_raise_detector: HandRaiseDetector
     posture_monitor: PostureMonitor
     disable_jp: bool = False
     frame_idx: int = 0
     last_landmarks: np.ndarray | None = None
     last_head_alerts: list[str] = field(default_factory=list)
+    last_hand_alerts: list[str] = field(default_factory=list)
+    last_hand_statuses: dict[str, bool] | None = None
 
 
 class VideoProcessor:
@@ -160,6 +166,7 @@ class VideoProcessor:
             monitoring_duration=self.pm_monitoring_duration_sec, alert_threshold=self.pm_alert_threshold_ratio
         )
         self.head_shake_detector = HeadShakeDetector()
+        self.hand_raise_detector = HandRaiseDetector(visibility_threshold=0.5, min_consecutive_frames=3)
 
     def run(self):
         """ビデオ処理のメインループを実行する"""
@@ -214,6 +221,19 @@ class VideoProcessor:
         ):
             print(f"[{timestamp:.1f}s] 通知: 指定エリアのお客様対応をお願いします。")
 
+        # Hand raise detection
+        hand_statuses = None
+        try:
+            hand_statuses = self.hand_raise_detector.detect(landmarks)
+        except (IndexError, TypeError, ValueError) as e:
+            # Handle specific expected exceptions from landmark processing
+            print(f"Warning: Hand raise detection failed due to landmark data issue: {e}")
+            hand_statuses = None
+        except Exception as e:
+            # Log unexpected errors for debugging
+            print(f"Error: Unexpected error in hand raise detection: {e}")
+            hand_statuses = None
+
         write_results_to_csv(
             csv_writer=self.csv_writer,
             timestamp=timestamp,
@@ -224,12 +244,20 @@ class VideoProcessor:
             dwell_alert=dwell_alert,
             head_shake_detector=self.head_shake_detector,
             head_shake_alerts=head_shake_alerts,
+            hand_raise_detector=self.hand_raise_detector,
+            hand_statuses=hand_statuses,
             landmarks=landmarks,
             user_classifier=self.user_classifier,
         )
 
         frame = draw_landmarks(frame, landmarks)
-        frame = draw_analysis_results(frame, analysis_results, landmarks, disable_japanese=self.disable_japanese)
+        frame = draw_analysis_results(
+            frame,
+            analysis_results,
+            hand_statuses,
+            landmarks,
+            disable_japanese=self.disable_japanese,
+        )
         frame = draw_detection_info(
             frame,
             self.user_classifier,
@@ -290,9 +318,22 @@ def process_frame(
     alerts.extend(head_alerts)
     state.last_head_alerts = head_alerts
 
+    # Hand raise detection
+    try:
+        hand_statuses = state.hand_raise_detector.detect(landmarks=landmarks)
+    except (IndexError, TypeError, ValueError) as e:
+        # Handle specific expected exceptions from landmark processing
+        print(f"Warning: Hand raise detection failed due to landmark data issue: {e}")
+        hand_statuses = None
+    except Exception as e:
+        # Log unexpected errors for debugging
+        print(f"Error: Unexpected error in hand raise detection: {e}")
+        hand_statuses = None
+    state.last_hand_statuses = hand_statuses
+
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
-    frame = draw_analysis_results(frame, results, landmarks, disable_japanese=state.disable_jp)
+    frame = draw_analysis_results(frame, results, hand_statuses, landmarks, disable_japanese=state.disable_jp)
     frame = draw_detection_info(
         frame,
         state.user_classifier,
@@ -317,23 +358,39 @@ def run_pipeline(
     # ---- new for lazy init ----
     output_video_path: str | None = None,  # 出力先パス（None なら書き出しなし）
     writer_fps: float = 30.0,  # Writer 用FPS（FFmpeg/設定に合わせる）
+    total_frames: int | None = None,  # Total frame count for progress bar
+    show_progress: bool = False,  # Whether to show tqdm progress bar
 ) -> None:
     """
     Iterate frames (t, frame) → process → write CSV/video → optional preview.
     Lazily initializes the VideoWriter on the first processed frame if `video_writer` is None.
+
+    Parameters
+    ----------
+    show_progress : bool, default=False
+        Whether to display a tqdm progress bar during processing.
+        When True, shows progress with frame count and percentage.
+        When False, processes frames without progress indication.
     """
     broke_on_q = False
     imshow_ok = True
+    progress_total = total_frames if total_frames and total_frames > 0 else None
+
+    # 🦸‍♀️ Saki: "進捗バーを'あってもなくてもいい透明な層'として扱う"
+    if show_progress:
+        iterator_wrapper = tqdm(frame_iter, total=progress_total, desc="Processing video", unit="frame")
+    else:
+        iterator_wrapper = frame_iter
 
     try:
-        for t, frame in frame_iter:
+        for t, frame in iterator_wrapper:
+            # Core processing (identical regardless of progress bar)
             annotated, results, alerts, aux = process_frame(frame, t, state)
 
-            # ---- Video sink (lazy init; exactly one write per frame) ----
+            # Video sink with lazy initialization
             if video_writer is None:
                 if output_video_path:
-                    h, w = annotated.shape[:2]  # numpy gives (h, w)
-                    # io_utils.setup_video_writer expects (H, W)
+                    h, w = annotated.shape[:2]
                     video_writer = setup_video_writer((h, w), output_video_path, fps=writer_fps)
                     video_writer.write(annotated)
             else:
@@ -351,11 +408,13 @@ def run_pipeline(
                     dwell_alert=aux["dwell_alert"],
                     head_shake_detector=state.head_shake_detector,
                     head_shake_alerts=state.last_head_alerts,
+                    hand_raise_detector=state.hand_raise_detector,
+                    hand_statuses=state.last_hand_statuses,
                     landmarks=state.last_landmarks,
                     user_classifier=state.user_classifier,
                 )
 
-            # UI preview（CIでも落ちないよう最低限）
+            # UI preview
             if preview:
                 try:
                     cv2.imshow(window_name, annotated)
@@ -397,6 +456,9 @@ def process_video(
     pm_alert_threshold_ratio: float = 0.7,
     uc_threshold_deg: float = 90.0,
     uc_moving_window_seconds: float = 5.0,
+    # Hand raise
+    hand_raise_visibility_threshold: float = 0.5,
+    hand_raise_min_consecutive_frames: int = 5,
     # 新：FFmpeg切替のためのヒント（省略時は自動推定）
     input_mode: str | None = None,  # "ffmpeg-file" | "ffmpeg-camera"
     width: int = 1280,
@@ -404,10 +466,18 @@ def process_video(
     fps: float = 30.0,
     is_color: bool = True,
     preview: bool = True,
+    show_progress: bool = False,  # Whether to show tqdm progress bar
 ) -> None:
     """
     Thin facade that wires:
       source (FFmpeg/OpenCV) -> process -> sinks (CSV/video/UI).
+
+    Parameters
+    ----------
+    show_progress : bool, default=False
+        Whether to display a tqdm progress bar during video processing.
+        When True, calculates total frame count and shows processing progress.
+        When False, processes video without progress indication.
     """
     # 1) Modules / state
     pose = PoseEstimator()
@@ -425,6 +495,10 @@ def process_video(
         cycle_detection_window=60,
         min_oscillations=2,
     )
+    hand_raise_detector = HandRaiseDetector(
+        visibility_threshold=hand_raise_visibility_threshold,
+        min_consecutive_frames=hand_raise_min_consecutive_frames,
+    )
     posture = PostureMonitor(pm_monitoring_duration_sec, pm_alert_threshold_ratio)
 
     state = PipelineState(
@@ -433,16 +507,26 @@ def process_video(
         user_classifier=user_clf,
         dwell_time_detector=dwell,
         head_shake_detector=head,
+        hand_raise_detector=hand_raise_detector,
         posture_monitor=posture,
         disable_jp=disable_japanese,
     )
 
     # 2) CSV/Video sinks（既存の setup_* を利用）
-    csv_writer = setup_csv_writer(open(output_csv_path, "w", newline="", encoding="utf-8")) if output_csv_path else None  # noqa: SIM115
+    csv_file = None
+    csv_writer = None
+    if output_csv_path:
+        csv_file = open(output_csv_path, "w", newline="", encoding="utf-8")  # noqa: SIM115
+        csv_writer = setup_csv_writer(csv_file)
     # VideoWriter は最初のフレーム形状で遅延初期化（ソース実寸に一致させる）
     video_writer = None
 
-    # 3) Frame source（FFmpeg優先 → フォールバックOpenCV）
+    # 3) Calculate total frames for progress bar (only if show_progress is True)
+    # Note: Use original video frame count, not FFmpeg-processed count
+    # FFmpeg fps filter may change the total frame count
+    total_frames = estimate_total_frames(video_path=video_path, fps=fps, show_progress=show_progress)
+
+    # 4) Frame source（FFmpeg優先 → フォールバックOpenCV）
     def _opencv_iter(path: str) -> Iterator[tuple[float, np.ndarray]]:
         cap = cv2.VideoCapture(path)
         try:
@@ -472,17 +556,24 @@ def process_video(
     else:
         frame_iter = _opencv_iter(video_path)
 
-    # 4) Run
-    rp = globals().get("run_pipeline")
-    if not callable(rp):
-        raise RuntimeError("run_pipeline is not callable")
-    rp(
-        frame_iter,
-        csv_writer=csv_writer,
-        video_writer=video_writer,
-        state=state,
-        preview=preview,
-        window_name="Integrated Analysis",
-        output_video_path=output_video_path,
-        writer_fps=fps,
-    )
+    # 5) Run
+    try:
+        rp = globals().get("run_pipeline")
+        if not callable(rp):
+            raise RuntimeError("run_pipeline is not callable")
+        rp(
+            frame_iter,
+            csv_writer=csv_writer,
+            video_writer=video_writer,
+            state=state,
+            preview=preview,
+            window_name="Integrated Analysis",
+            output_video_path=output_video_path,
+            writer_fps=fps,
+            total_frames=total_frames,
+            show_progress=show_progress,
+        )
+    finally:
+        # 明示的にCSVファイルをクローズする
+        if csv_file is not None and hasattr(csv_file, "close"):
+            csv_file.close()
