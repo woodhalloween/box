@@ -1,0 +1,4 @@
+start_frame,end_frame,start_time,end_time,event_type
+150,250,5.0,8.33,HEAD_SHAKE
+400,500,13.33,16.67,HEAD_SHAKE
+650,750,21.67,25.0,HEAD_SHAKE

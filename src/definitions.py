@@ -41,3 +41,9 @@ class MovementState(Enum):
     HEAD_RIGHT_TURN = "HEAD_RIGHT_TURN"  # 右向き
     HEAD_UP_NOD = "HEAD_UP_NOD"  # 上向きうなずき
     HEAD_DOWN_NOD = "HEAD_DOWN_NOD"  # 下向きうなずき
+    # MediaPipe Face Mesh 頭部方向検知用
+    MEDIAPIPE_LEFT_TURN = "MEDIAPIPE_LEFT_TURN"  # MediaPipe: 左向き
+    MEDIAPIPE_RIGHT_TURN = "MEDIAPIPE_RIGHT_TURN"  # MediaPipe: 右向き
+    MEDIAPIPE_FRONT_FACE = "MEDIAPIPE_FRONT_FACE"  # MediaPipe: 正面
+    MEDIAPIPE_SUSTAINED_LEFT = "MEDIAPIPE_SUSTAINED_LEFT"  # MediaPipe: 持続的左向き
+    MEDIAPIPE_SUSTAINED_RIGHT = "MEDIAPIPE_SUSTAINED_RIGHT"  # MediaPipe: 持続的右向き

@@ -48,6 +48,7 @@ class PipelineState:
     head_shake_detector: HeadShakeDetector
     hand_raise_detector: HandRaiseDetector
     posture_monitor: PostureMonitor
+    mediapipe_head_turn_detector = None  # MediaPipeFaceMeshHeadTurnDetector | None
     disable_jp: bool = False
     frame_idx: int = 0
     last_landmarks: np.ndarray | None = None
@@ -73,6 +74,9 @@ class VideoProcessor:
         pm_alert_threshold_ratio: float,
         uc_threshold_deg: float,
         uc_moving_window_seconds: float,
+        enable_mediapipe_head_turn: bool = False,
+        mediapipe_yaw_threshold_right: float = 30.0,
+        mediapipe_yaw_threshold_left: float = -30.0,
     ):
         # --- 初期化では、後で使用するパラメータを保存するだけ ---
         self.video_path = video_path
@@ -90,6 +94,10 @@ class VideoProcessor:
         # UserClassifier params
         self.uc_threshold_deg = uc_threshold_deg
         self.uc_moving_window_seconds = uc_moving_window_seconds
+        # MediaPipe HeadTurn params
+        self.enable_mediapipe_head_turn = enable_mediapipe_head_turn
+        self.mediapipe_yaw_threshold_right = mediapipe_yaw_threshold_right
+        self.mediapipe_yaw_threshold_left = mediapipe_yaw_threshold_left
 
         # --- リソースは__enter__で初期化するため、ここではNoneに ---
         self.cap = None
@@ -168,6 +176,20 @@ class VideoProcessor:
         self.head_shake_detector = HeadShakeDetector()
         self.hand_raise_detector = HandRaiseDetector(visibility_threshold=0.5, min_consecutive_frames=3)
 
+        # MediaPipe Face Mesh 頭部方向検知（オプション）
+        if self.enable_mediapipe_head_turn:
+            from .detectors.mediapipe_head_turn_detector import MediaPipeFaceMeshHeadTurnDetector
+
+            self.mediapipe_head_turn_detector = MediaPipeFaceMeshHeadTurnDetector(
+                yaw_threshold_right=self.mediapipe_yaw_threshold_right,
+                yaw_threshold_left=self.mediapipe_yaw_threshold_left,
+                min_consecutive_frames=3,
+                cooldown_sec=10.0,
+            )
+            print(f"MediaPipe Face Mesh 頭部方向検知を有効化 (閾値: 右={self.mediapipe_yaw_threshold_right}度, 左={self.mediapipe_yaw_threshold_left}度)")
+        else:
+            self.mediapipe_head_turn_detector = None
+
     def run(self):
         """ビデオ処理のメインループを実行する"""
         frame_count = 0
@@ -228,6 +250,19 @@ class VideoProcessor:
             except Exception:
                 hand_statuses = None
 
+        # MediaPipe Face Mesh 頭部方向検知（オプション）
+        if self.mediapipe_head_turn_detector:
+            try:
+                mp_result = self.mediapipe_head_turn_detector.detect(frame, timestamp)
+                sustained_turn = self.mediapipe_head_turn_detector.check_sustained_turn(timestamp)
+                if sustained_turn:
+                    print(
+                        f"[MediaPipe {timestamp:.1f}s] {sustained_turn['direction']}を検知 "
+                        f"({sustained_turn['frames']}フレーム継続, ヨー角={sustained_turn['yaw_angle']:.1f}度)"
+                    )
+            except Exception as e:
+                print(f"MediaPipe検出エラー: {e}")
+
         write_results_to_csv(
             csv_writer=self.csv_writer,
             timestamp=timestamp,
@@ -242,6 +277,7 @@ class VideoProcessor:
             hand_statuses=hand_statuses,
             landmarks=landmarks,
             user_classifier=self.user_classifier,
+            mediapipe_head_turn_detector=self.mediapipe_head_turn_detector if hasattr(self, "mediapipe_head_turn_detector") else None,
         )
 
         frame = draw_landmarks(frame, landmarks)
@@ -261,6 +297,8 @@ class VideoProcessor:
             posture_alerts,
             landmarks,
             timestamp,
+            mediapipe_head_turn_detector=self.mediapipe_head_turn_detector if hasattr(self, "mediapipe_head_turn_detector") else None,
+            disable_jp=self.disable_japanese,
         )
 
         if self.output_video_path:

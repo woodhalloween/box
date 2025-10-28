@@ -84,6 +84,13 @@ def setup_csv_writer(csv_file: IO) -> csv.DictWriter:
         "torso_sway_ap_cycles",
         "torso_sway_ap_flag",
         "torso_sway_ap_level",
+        # --- MediaPipe Face Mesh 頭部方向検知 ---
+        "mediapipe_yaw_angle",
+        "mediapipe_face_detected",
+        "mediapipe_turn_direction",
+        "mediapipe_sustained_turn_detected",
+        "mediapipe_sustained_direction",
+        "mediapipe_sustained_frames",
     ]
     landmark_fieldnames = []
     for landmark in mp.solutions.pose.PoseLandmark:
@@ -111,6 +118,7 @@ def write_results_to_csv(
     landmarks: np.ndarray | None,
     user_classifier: UserClassifier | None = None,
     torso_sway: dict | None = None,
+    mediapipe_head_turn_detector=None,  # MediaPipeFaceMeshHeadTurnDetector | None
 ):
     """結果をCSVに書き込む"""
     row: dict[str, Any] = {"timestamp": timestamp, "frame_number": frame_number}
@@ -203,6 +211,31 @@ def write_results_to_csv(
             "torso_sway_ap_level": str(ap.get("level", "none")),
         }
     )
+
+    # MediaPipe Face Mesh 頭部方向検知の結果
+    if mediapipe_head_turn_detector:
+        status = mediapipe_head_turn_detector.get_status()
+        row.update(
+            {
+                "mediapipe_yaw_angle": status.get("yaw_angle", 0.0),
+                "mediapipe_face_detected": status.get("face_detected", False),
+                "mediapipe_turn_direction": status.get("direction", ""),
+                "mediapipe_sustained_turn_detected": status.get("is_sustained", False),
+                "mediapipe_sustained_direction": status.get("current_direction", ""),
+                "mediapipe_sustained_frames": status.get("consecutive_frames", 0),
+            }
+        )
+    else:
+        row.update(
+            {
+                "mediapipe_yaw_angle": 0.0,
+                "mediapipe_face_detected": False,
+                "mediapipe_turn_direction": "",
+                "mediapipe_sustained_turn_detected": False,
+                "mediapipe_sustained_direction": "",
+                "mediapipe_sustained_frames": 0,
+            }
+        )
 
     if landmarks is not None:
         for landmark in mp.solutions.pose.PoseLandmark:

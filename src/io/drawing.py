@@ -161,6 +161,7 @@ def draw_torso_indicators(image: np.ndarray, landmarks: np.ndarray, confidence_t
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
+    hand_statuses: dict[str, Any] | None,
     landmarks: np.ndarray | None,
     fps: float = 0.0,
     disable_japanese: bool = False,
@@ -172,7 +173,8 @@ def draw_analysis_results(
     img_with_text = image.copy()
 
     # --- FPSを描画 ---
-    fps_text = f"FPS: {fps:.2f}"
+    fps_val = float(fps) if isinstance(fps, (int, float, np.ndarray)) else 0.0
+    fps_text = f"FPS: {fps_val:.2f}"
     # 右上に白で描画
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
     # --- ここまで ---
@@ -215,6 +217,89 @@ def draw_analysis_results(
     return img_with_text
 
 
+def draw_mediapipe_head_turn_info(
+    frame: np.ndarray, mediapipe_detector, disable_jp: bool = False
+) -> np.ndarray:
+    """MediaPipe Face Mesh頭部方向検知の結果を描画する。
+
+    Args:
+        frame (np.ndarray): 描画対象のフレーム
+        mediapipe_detector: MediaPipeFaceMeshHeadTurnDetector | None
+        disable_jp (bool): 日本語を無効化するか
+
+    Returns:
+        np.ndarray: 描画後のフレーム
+    """
+    if not mediapipe_detector:
+        return frame
+
+    status = mediapipe_detector.get_status()
+
+    # フレーム左上にヨー角を表示
+    yaw_angle = status.get("yaw_angle", 0.0)
+    yaw_text = f"Yaw: {yaw_angle:.1f}" if disable_jp else f"ヨー角: {yaw_angle:.1f}度"
+
+    cv2.putText(frame, yaw_text, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+    # 方向を色分けして表示
+    direction = status.get("direction", "正面")
+    if direction == "左向き":
+        color = (255, 0, 0)  # 青
+        direction_en = "LEFT"
+    elif direction == "右向き":
+        color = (0, 0, 255)  # 赤
+        direction_en = "RIGHT"
+    else:
+        color = (0, 255, 0)  # 緑
+        direction_en = "FRONT"
+
+    dir_text = direction if not disable_jp else direction_en
+
+    if disable_jp:
+        cv2.putText(
+            frame, f"Head: {dir_text}", (frame.shape[1] - 200, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2
+        )
+    else:
+        frame = draw_japanese_text(frame, f"頭部: {dir_text}", (frame.shape[1] - 200, 60), 24, color)
+
+    # 持続的方向転換検知時に大きなアラート表示
+    if status.get("is_sustained", False):
+        sustained_dir = status.get("current_direction", "")
+        sustained_frames = status.get("consecutive_frames", 0)
+
+        if sustained_dir != "正面":  # 正面は通知しない
+            # 画面中央下部に大きなアラート
+            alert_y = frame.shape[0] - 120
+
+            if disable_jp:
+                alert_text = f"HEAD TURN DETECTED: {sustained_dir} ({sustained_frames} frames)"
+            else:
+                alert_text = f"🎯 {sustained_dir}を検知! ({sustained_frames}フレーム)"
+
+            # 背景矩形を描画
+            text_size = cv2.getTextSize(alert_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+            rect_x1 = (frame.shape[1] - text_size[0]) // 2 - 20
+            rect_x2 = (frame.shape[1] + text_size[0]) // 2 + 20
+            cv2.rectangle(frame, (rect_x1, alert_y - 40), (rect_x2, alert_y + 10), (0, 0, 0), -1)
+            cv2.rectangle(frame, (rect_x1, alert_y - 40), (rect_x2, alert_y + 10), color, 3)
+
+            # テキストを描画
+            if disable_jp:
+                cv2.putText(
+                    frame,
+                    alert_text,
+                    ((frame.shape[1] - text_size[0]) // 2, alert_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2,
+                    color,
+                    3,
+                )
+            else:
+                frame = draw_japanese_text(frame, alert_text, ((frame.shape[1] - text_size[0]) // 2, alert_y), 32, color)
+
+    return frame
+
+
 def draw_detection_info(
     frame: np.ndarray,
     user_classifier: UserClassifier,
@@ -224,8 +309,14 @@ def draw_detection_info(
     posture_alerts: list[str],
     landmarks: np.ndarray | None,
     timestamp: float,
+    mediapipe_head_turn_detector=None,  # MediaPipeFaceMeshHeadTurnDetector | None
+    disable_jp: bool = False,
 ) -> np.ndarray:
     """検知情報をフレームに描画する（統合版）"""
+    # MediaPipe頭部方向検知を描画
+    if mediapipe_head_turn_detector:
+        frame = draw_mediapipe_head_turn_info(frame, mediapipe_head_turn_detector, disable_jp)
+
     y_offset = 30
     # --- 上部にアラートを描画（体幹揺れは下部へ回す） ---
     all_alerts: list[tuple[str, tuple[int, int, int]]] = []

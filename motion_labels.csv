@@ -1,0 +1,2 @@
+start_time,end_time,start_seconds,end_seconds,duration_seconds,type,confidence,description
+00:00:33.722,00:00:33.806,33.722,33.806,0.083,HEAD_MOTION,1.0,HEAD_MOTION detected

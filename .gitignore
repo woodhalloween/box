@@ -80,3 +80,5 @@ tests/**/.coverage
 
 # Output files
 output/
+# Experiments (external repositories for local testing)
+experiments/
