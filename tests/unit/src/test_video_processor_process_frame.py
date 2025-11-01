@@ -104,6 +104,8 @@ def _mk_state(
     s.last_landmarks = "UNTOUCHED"
     s.last_head_alerts = "UNTOUCHED"
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
     return s
 
 
@@ -265,6 +267,8 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -315,6 +319,8 @@ def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -368,6 +374,8 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -418,6 +426,8 @@ def test_process_frame_hand_raise_detection_indexerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -470,6 +480,8 @@ def test_process_frame_hand_raise_detection_typeerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -520,6 +532,8 @@ def test_process_frame_hand_raise_detection_valueerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -570,6 +584,8 @@ def test_process_frame_hand_raise_detection_unexpected_exception(monkeypatch, ca
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -620,6 +636,8 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -677,6 +695,8 @@ def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeyp
         s.last_landmarks = None
         s.last_head_alerts = []
         s.last_hand_statuses = "UNTOUCHED"
+        s.prev_hand_raised_left = False
+        s.prev_hand_raised_right = False
 
         # Patch draw functions to pass-through
         monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)

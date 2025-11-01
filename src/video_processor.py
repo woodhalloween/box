@@ -453,64 +453,65 @@ def process_frame(
         }
         debug_csv_writer.writerow(debug_row)
 
-        # Print to console when at least one of two hands is raised (only on state transition from False to True)
-        if hand_statuses:
-            left_raised = hand_statuses.get("left_hand_raised", False)
-            right_raised = hand_statuses.get("right_hand_raised", False)
+    # Hand raise console printing and email notification (independent of debug CSV)
+    # Print to console when at least one of two hands is raised (only on state transition from False to True)
+    if hand_statuses:
+        left_raised = hand_statuses.get("left_hand_raised", False)
+        right_raised = hand_statuses.get("right_hand_raised", False)
 
-            # Detect transitions from False to True
-            left_transition = left_raised and not state.prev_hand_raised_left
-            right_transition = right_raised and not state.prev_hand_raised_right
+        # Detect transitions from False to True
+        left_transition = left_raised and not state.prev_hand_raised_left
+        right_transition = right_raised and not state.prev_hand_raised_right
 
+        if left_transition or right_transition:
+            print(
+                f"[Frame {state.frame_idx} @ {t:.3f}s] "
+                f"🙌 Hand(s) raised detected: "
+                f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
+            )
+
+        # Email notification on False->True transitions (only once per transition)
+        try:
             if left_transition or right_transition:
-                print(
-                    f"[Frame {state.frame_idx} @ {t:.3f}s] "
-                    f"🙌 Hand(s) raised detected: "
-                    f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
+                email_config = _load_email_config()
+                username = email_config["username"]
+                password = email_config["password"]
+                smtp_server = email_config["smtp_server"]
+                smtp_port = int(email_config["smtp_port"] or "587")
+                subject = email_config["subject"]
+                recipient = email_config["recipient"]
+
+                notification = BasicNotification()
+                notification = EmailNotificationDecorator(
+                    notification,
+                    smtp_server=smtp_server,
+                    smtp_port=smtp_port,
+                    username=username,
+                    password=password,
+                    subject=subject,
                 )
 
-            # Email notification on False->True transitions (only once per transition)
-            try:
-                if left_transition or right_transition:
-                    email_config = _load_email_config()
-                    username = email_config["username"]
-                    password = email_config["password"]
-                    smtp_server = email_config["smtp_server"]
-                    smtp_port = int(email_config["smtp_port"] or "587")
-                    subject = email_config["subject"]
-                    recipient = email_config["recipient"]
+                parts = []
+                if left_transition:
+                    parts.append("Left hand raised")
+                if right_transition:
+                    parts.append("Right hand raised")
+                msg = f"{' & '.join(parts)} at {t:.3f}s (frame {state.frame_idx})"
 
-                    notification = BasicNotification()
-                    notification = EmailNotificationDecorator(
-                        notification,
-                        smtp_server=smtp_server,
-                        smtp_port=smtp_port,
-                        username=username,
-                        password=password,
-                        subject=subject,
-                    )
+                if recipient:
+                    notification.send(msg, recipient)
+                else:
+                    print(f"[Email] Missing EMAIL_RECIPIENT; would send: {msg}")
+        except Exception as e:
+            print(f"Email notification error: {e}")
 
-                    parts = []
-                    if left_transition:
-                        parts.append("Left hand raised")
-                    if right_transition:
-                        parts.append("Right hand raised")
-                    msg = f"{' & '.join(parts)} at {t:.3f}s (frame {state.frame_idx})"
-
-                    if recipient:
-                        notification.send(msg, recipient)
-                    else:
-                        print(f"[Email] Missing EMAIL_RECIPIENT; would send: {msg}")
-            except Exception as e:
-                print(f"Email notification error: {e}")
-
-            # Update previous states
-            state.prev_hand_raised_left = left_raised
-            state.prev_hand_raised_right = right_raised
-        else:
-            # Reset previous states when hand detection fails
-            state.prev_hand_raised_left = False
-            state.prev_hand_raised_right = False
+        # Update previous states
+        state.prev_hand_raised_left = left_raised
+        state.prev_hand_raised_right = right_raised
+    else:
+        # Reset previous states when hand detection fails
+        state.prev_hand_raised_left = False
+        state.prev_hand_raised_right = False
 
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
