@@ -80,3 +80,6 @@ tests/**/.coverage
 
 # Output files
 output/
+
+# config files
+config.ini
