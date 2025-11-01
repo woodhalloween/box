@@ -20,7 +20,9 @@ try:
 except Exception:  # フォールバック（まだ移行前の環境でも崩れないように）
     make_frame_iter = None  # type: ignore
 
+import configparser
 import csv  # CSV writer 型注釈に使う（既存の setup_csv_writer を利用）
+import os
 
 import cv2
 import numpy as np
@@ -35,6 +37,8 @@ from .io.csv_writer import setup_csv_writer, write_results_to_csv
 from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
+from .notifiers.base_notification import BasicNotification
+from .notifiers.email_notification import EmailNotificationDecorator
 from .pose_estimator import PoseEstimator
 from .video_processing.estimate_total_frames import estimate_total_frames
 
@@ -279,6 +283,81 @@ class VideoProcessor:
         return frame
 
 
+def _load_email_config():
+    """
+    Load email configuration from config.ini file, with fallback to environment variables.
+    Automatically creates config.ini with default values if it doesn't exist.
+    Returns a dictionary with email configuration values.
+    """
+    config_path = Path("config.ini")
+    config = configparser.ConfigParser()
+
+    # Create config.ini if it doesn't exist
+    if not config_path.exists():
+        print("config.ini not found. Creating default config.ini file...")
+
+        # Get values from environment variables or use defaults
+        username = os.getenv("EMAIL_USERNAME", "")
+        password = os.getenv("EMAIL_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = os.getenv("EMAIL_SMTP_PORT", "587")
+        subject = os.getenv("EMAIL_SUBJECT", "Hand raise detected")
+        recipient = os.getenv("EMAIL_RECIPIENT", "")
+
+        # Create the email section with values
+        config["email"] = {
+            "username": username,
+            "password": password,
+            "smtp_server": smtp_server,
+            "smtp_port": smtp_port,
+            "subject": subject,
+            "recipient": recipient,
+        }
+
+        # Write the config file
+        try:
+            with config_path.open("w", encoding="utf-8") as f:
+                config.write(f)
+            print(f"Created config.ini at {config_path.absolute()}")
+        except Exception as e:
+            print(f"Warning: Could not create config.ini: {e}")
+    else:
+        # Try to read existing config.ini
+        try:
+            config.read(config_path)
+        except Exception as e:
+            print(f"Warning: Could not read config.ini: {e}")
+
+    # Helper function to get value: first from config.ini, then from env, then default
+    def get_value(section: str, key: str, env_var: str, default: str | None = None) -> str | None:
+        # Try config.ini first
+        try:
+            if config.has_section(section) and config.has_option(section, key):
+                value = config.get(section, key)
+                # Return None only if the value is empty string
+                if value:
+                    return value
+        except Exception:
+            pass
+
+        # Fallback to environment variable
+        env_value = os.getenv(env_var)
+        if env_value:
+            return env_value
+
+        # Return default
+        return default
+
+    return {
+        "username": get_value("email", "username", "EMAIL_USERNAME"),
+        "password": get_value("email", "password", "EMAIL_PASSWORD"),
+        "smtp_server": get_value("email", "smtp_server", "EMAIL_SMTP_SERVER", "smtp.gmail.com"),
+        "smtp_port": get_value("email", "smtp_port", "EMAIL_SMTP_PORT", "587"),
+        "subject": get_value("email", "subject", "EMAIL_SUBJECT", "Hand raise detected"),
+        "recipient": get_value("email", "recipient", "EMAIL_RECIPIENT"),
+    }
+
+
 def process_frame(
     frame: np.ndarray, t: float, state: PipelineState, debug_csv_writer: csv.DictWriter | None = None
 ) -> tuple[np.ndarray, dict[Angle, dict[str, float | MovementState]], list[str], dict[str, Any]]:
@@ -389,6 +468,41 @@ def process_frame(
                     f"🙌 Hand(s) raised detected: "
                     f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
                 )
+
+            # Email notification on False->True transitions (only once per transition)
+            try:
+                if left_transition or right_transition:
+                    email_config = _load_email_config()
+                    username = email_config["username"]
+                    password = email_config["password"]
+                    smtp_server = email_config["smtp_server"]
+                    smtp_port = int(email_config["smtp_port"] or "587")
+                    subject = email_config["subject"]
+                    recipient = email_config["recipient"]
+
+                    notification = BasicNotification()
+                    notification = EmailNotificationDecorator(
+                        notification,
+                        smtp_server=smtp_server,
+                        smtp_port=smtp_port,
+                        username=username,
+                        password=password,
+                        subject=subject,
+                    )
+
+                    parts = []
+                    if left_transition:
+                        parts.append("Left hand raised")
+                    if right_transition:
+                        parts.append("Right hand raised")
+                    msg = f"{' & '.join(parts)} at {t:.3f}s (frame {state.frame_idx})"
+
+                    if recipient:
+                        notification.send(msg, recipient)
+                    else:
+                        print(f"[Email] Missing EMAIL_RECIPIENT; would send: {msg}")
+            except Exception as e:
+                print(f"Email notification error: {e}")
 
             # Update previous states
             state.prev_hand_raised_left = left_raised
