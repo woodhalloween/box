@@ -34,7 +34,7 @@ from .analysis.user_classifier import UserClassifier
 from .detectors.hand_raise_refactored import HandRaiseDetector
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
-from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
+from .io.drawing import draw_analysis_results, draw_color_frame, draw_detection_info, draw_landmarks
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
 from .notifiers.base_notification import BasicNotification
@@ -362,55 +362,6 @@ def _load_email_config():
         "subject": get_value("email", "subject", "EMAIL_SUBJECT", "Hand raise detected"),
         "recipient": get_value("email", "recipient", "EMAIL_RECIPIENT"),
     }
-
-
-def draw_color_frame(frame: np.ndarray, color_str: str, alpha: float = 0.3) -> np.ndarray:
-    """
-    Overlay a semi-transparent color on the entire frame.
-
-    Parameters
-    ----------
-    frame : np.ndarray
-        Input frame (BGR format).
-    color_str : str
-        RGB color as string. Supports formats:
-        - "R,G,B" (e.g., "255,0,0" for red)
-        - "#RRGGBB" (e.g., "#FF0000" for red)
-    alpha : float, default=0.3
-        Transparency level (0.0 = fully transparent, 1.0 = fully opaque).
-
-    Returns
-    -------
-    np.ndarray
-        Frame with color overlay applied.
-    """
-    # Parse color string to BGR tuple (OpenCV uses BGR, not RGB)
-    try:
-        if color_str.startswith("#"):
-            # Hex format: #RRGGBB
-            hex_color = color_str.lstrip("#")
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-        else:
-            # Comma-separated format: R,G,B
-            parts = color_str.split(",")
-            r = int(parts[0].strip())
-            g = int(parts[1].strip())
-            b = int(parts[2].strip())
-        # Convert RGB to BGR for OpenCV
-        color_bgr = (b, g, r)
-    except (ValueError, IndexError) as e:
-        # Fallback to red if parsing fails
-        print(f"Warning: Could not parse color '{color_str}': {e}. Using red (255,0,0).")
-        color_bgr = (0, 0, 255)  # Red in BGR
-
-    # Create a solid color overlay
-    overlay = frame.copy()
-    overlay[:] = color_bgr
-
-    # Blend the overlay with the frame
-    return cv2.addWeighted(frame, 1.0 - alpha, overlay, alpha, 0)
 
 
 def process_frame(

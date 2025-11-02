@@ -106,6 +106,12 @@ def _mk_state(
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
     return s
 
 
@@ -269,6 +275,12 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -321,6 +333,12 @@ def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -376,6 +394,12 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -428,6 +452,12 @@ def test_process_frame_hand_raise_detection_indexerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -482,6 +512,12 @@ def test_process_frame_hand_raise_detection_typeerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -534,6 +570,12 @@ def test_process_frame_hand_raise_detection_valueerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -586,6 +628,12 @@ def test_process_frame_hand_raise_detection_unexpected_exception(monkeypatch, ca
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -638,6 +686,12 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -646,6 +700,7 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
         lambda f, r, hand_statuses, lm, disable_japanese: f,
     )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
 
     frame = np.zeros((10, 10, 3), dtype=np.uint8)
     out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
@@ -697,6 +752,12 @@ def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeyp
         s.last_hand_statuses = "UNTOUCHED"
         s.prev_hand_raised_left = False
         s.prev_hand_raised_right = False
+        # Blinking state for hand raise detection
+        s.blink_start_time = None
+        s.blink_is_active = False
+        s.blink_color = "255,0,0"
+        s.blink_duration = 3.0
+        s.blink_last_toggle_time = 0.0
 
         # Patch draw functions to pass-through
         monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
