@@ -20,7 +20,9 @@ try:
 except Exception:  # フォールバック（まだ移行前の環境でも崩れないように）
     make_frame_iter = None  # type: ignore
 
+import configparser
 import csv  # CSV writer 型注釈に使う（既存の setup_csv_writer を利用）
+import os
 
 import cv2
 import numpy as np
@@ -35,6 +37,8 @@ from .io.csv_writer import setup_csv_writer, write_results_to_csv
 from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
+from .notifiers.base_notification import BasicNotification
+from .notifiers.email_notification import EmailNotificationDecorator
 from .pose_estimator import PoseEstimator
 from .video_processing.estimate_total_frames import estimate_total_frames
 
@@ -54,6 +58,8 @@ class PipelineState:
     last_head_alerts: list[str] = field(default_factory=list)
     last_hand_alerts: list[str] = field(default_factory=list)
     last_hand_statuses: dict[str, bool] | None = None
+    prev_hand_raised_left: bool = False
+    prev_hand_raised_right: bool = False
 
 
 class VideoProcessor:
@@ -277,12 +283,92 @@ class VideoProcessor:
         return frame
 
 
+def _load_email_config():
+    """
+    Load email configuration from config.ini file, with fallback to environment variables.
+    Automatically creates config.ini with default values if it doesn't exist.
+    Returns a dictionary with email configuration values.
+    """
+    config_path = Path("config.ini")
+    config = configparser.ConfigParser()
+
+    # Create config.ini if it doesn't exist
+    if not config_path.exists():
+        print("config.ini not found. Creating default config.ini file...")
+
+        # Get values from environment variables or use defaults
+        username = os.getenv("EMAIL_USERNAME", "")
+        password = os.getenv("EMAIL_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = os.getenv("EMAIL_SMTP_PORT", "587")
+        subject = os.getenv("EMAIL_SUBJECT", "Hand raise detected")
+        recipient = os.getenv("EMAIL_RECIPIENT", "")
+
+        # Create the email section with values
+        config["email"] = {
+            "username": username,
+            "password": password,
+            "smtp_server": smtp_server,
+            "smtp_port": smtp_port,
+            "subject": subject,
+            "recipient": recipient,
+        }
+
+        # Write the config file
+        try:
+            with config_path.open("w", encoding="utf-8") as f:
+                config.write(f)
+            print(f"Created config.ini at {config_path.absolute()}")
+        except Exception as e:
+            print(f"Warning: Could not create config.ini: {e}")
+    else:
+        # Try to read existing config.ini
+        try:
+            config.read(config_path)
+        except Exception as e:
+            print(f"Warning: Could not read config.ini: {e}")
+
+    # Helper function to get value: first from config.ini, then from env, then default
+    def get_value(section: str, key: str, env_var: str, default: str | None = None) -> str | None:
+        # Try config.ini first
+        try:
+            if config.has_section(section) and config.has_option(section, key):
+                value = config.get(section, key)
+                # Return None only if the value is empty string
+                if value:
+                    return value
+        except Exception:
+            pass
+
+        # Fallback to environment variable
+        env_value = os.getenv(env_var)
+        if env_value:
+            return env_value
+
+        # Return default
+        return default
+
+    return {
+        "username": get_value("email", "username", "EMAIL_USERNAME"),
+        "password": get_value("email", "password", "EMAIL_PASSWORD"),
+        "smtp_server": get_value("email", "smtp_server", "EMAIL_SMTP_SERVER", "smtp.gmail.com"),
+        "smtp_port": get_value("email", "smtp_port", "EMAIL_SMTP_PORT", "587"),
+        "subject": get_value("email", "subject", "EMAIL_SUBJECT", "Hand raise detected"),
+        "recipient": get_value("email", "recipient", "EMAIL_RECIPIENT"),
+    }
+
+
 def process_frame(
-    frame: np.ndarray, t: float, state: PipelineState
+    frame: np.ndarray, t: float, state: PipelineState, debug_csv_writer: csv.DictWriter | None = None
 ) -> tuple[np.ndarray, dict[Angle, dict[str, float | MovementState]], list[str], dict[str, Any]]:
     """
     Pure-lean: consume one frame and return (annotated_frame, analysis_results, alerts, aux).
     Aux carries small extras like 'dwell_alert' for CSV.
+
+    Parameters
+    ----------
+    debug_csv_writer : csv.DictWriter | None
+        Optional CSV writer for debug output of all detections.
     """
     landmarks = state.pose.estimate(frame)
     state.last_landmarks = landmarks
@@ -331,6 +417,102 @@ def process_frame(
         hand_statuses = None
     state.last_hand_statuses = hand_statuses
 
+    # Debug CSV output for all detections
+    if debug_csv_writer is not None:
+        # Get current status from each detector
+        dwell_status = state.dwell_time_detector.get_current_status()
+        user_alert = state.user_classifier.get_current_alert()
+        posture_status = state.posture_monitor.get_status()
+
+        debug_row = {
+            "timestamp": f"{t:.3f}",
+            "frame_idx": state.frame_idx,
+            # Posture
+            "posture_alerts": "|".join(posture_alerts) if posture_alerts else "",
+            "posture_forward_ratio": f"{posture_status['forward_ratio']:.3f}",
+            "posture_avg_score": f"{posture_status['avg_score']:.3f}",
+            "posture_sample_count": posture_status["sample_count"],
+            # Dwell (Hip stay detection)
+            "dwell_is_long_stay": dwell_status["is_long_stay"],
+            "dwell_stay_duration": f"{dwell_status['stay_duration']:.2f}",
+            "dwell_alert": dwell_alert if dwell_alert else "",
+            # Head Shake
+            "head_shake_alerts": "|".join(head_alerts) if head_alerts else "",
+            "head_shake_detected": len(head_alerts) > 0,
+            # Hand Raise
+            "hand_left_raised": hand_statuses.get("left_hand_raised", False) if hand_statuses else False,
+            "hand_right_raised": hand_statuses.get("right_hand_raised", False) if hand_statuses else False,
+            "hand_both_raised": (
+                hand_statuses.get("left_hand_raised", False) and hand_statuses.get("right_hand_raised", False)
+            )
+            if hand_statuses
+            else False,
+            # User Classification
+            "user_classified": user_alert is not None,
+            "user_classification": user_alert if user_alert else "",
+        }
+        debug_csv_writer.writerow(debug_row)
+
+    # Hand raise console printing and email notification (independent of debug CSV)
+    # Print to console when at least one of two hands is raised (only on state transition from False to True)
+    if hand_statuses:
+        left_raised = hand_statuses.get("left_hand_raised", False)
+        right_raised = hand_statuses.get("right_hand_raised", False)
+
+        # Detect transitions from False to True
+        left_transition = left_raised and not state.prev_hand_raised_left
+        right_transition = right_raised and not state.prev_hand_raised_right
+
+        if left_transition or right_transition:
+            print(
+                f"[Frame {state.frame_idx} @ {t:.3f}s] "
+                f"🙌 Hand(s) raised detected: "
+                f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
+            )
+
+        # Email notification on False->True transitions (only once per transition)
+        try:
+            if left_transition or right_transition:
+                email_config = _load_email_config()
+                username = email_config["username"]
+                password = email_config["password"]
+                smtp_server = email_config["smtp_server"]
+                smtp_port = int(email_config["smtp_port"] or "587")
+                subject = email_config["subject"]
+                recipient = email_config["recipient"]
+
+                notification = BasicNotification()
+                notification = EmailNotificationDecorator(
+                    notification,
+                    smtp_server=smtp_server,
+                    smtp_port=smtp_port,
+                    username=username,
+                    password=password,
+                    subject=subject,
+                )
+
+                parts = []
+                if left_transition:
+                    parts.append("Left hand raised")
+                if right_transition:
+                    parts.append("Right hand raised")
+                msg = f"{' & '.join(parts)} at {t:.3f}s (frame {state.frame_idx})"
+
+                if recipient:
+                    notification.send(msg, recipient)
+                else:
+                    print(f"[Email] Missing EMAIL_RECIPIENT; would send: {msg}")
+        except Exception as e:
+            print(f"Email notification error: {e}")
+
+        # Update previous states
+        state.prev_hand_raised_left = left_raised
+        state.prev_hand_raised_right = right_raised
+    else:
+        # Reset previous states when hand detection fails
+        state.prev_hand_raised_left = False
+        state.prev_hand_raised_right = False
+
     # Drawing (annotation only; I/Oは上位で)
     frame = draw_landmarks(frame, landmarks)
     frame = draw_analysis_results(frame, results, hand_statuses, landmarks, disable_japanese=state.disable_jp)
@@ -360,6 +542,7 @@ def run_pipeline(
     writer_fps: float = 30.0,  # Writer 用FPS（FFmpeg/設定に合わせる）
     total_frames: int | None = None,  # Total frame count for progress bar
     show_progress: bool = False,  # Whether to show tqdm progress bar
+    debug_csv_writer: csv.DictWriter | None = None,  # Debug CSV for all detections
 ) -> None:
     """
     Iterate frames (t, frame) → process → write CSV/video → optional preview.
@@ -371,6 +554,8 @@ def run_pipeline(
         Whether to display a tqdm progress bar during processing.
         When True, shows progress with frame count and percentage.
         When False, processes frames without progress indication.
+    debug_csv_writer : csv.DictWriter | None, default=None
+        Optional CSV writer for debug output of all detection states.
     """
     broke_on_q = False
     imshow_ok = True
@@ -385,7 +570,11 @@ def run_pipeline(
     try:
         for t, frame in iterator_wrapper:
             # Core processing (identical regardless of progress bar)
-            annotated, results, alerts, aux = process_frame(frame, t, state)
+            # Backward-compatible call: try new signature first, then fall back
+            try:
+                annotated, results, alerts, aux = process_frame(frame, t, state, debug_csv_writer)
+            except TypeError:
+                annotated, results, alerts, aux = process_frame(frame, t, state)
 
             # Video sink with lazy initialization
             if video_writer is None:
@@ -467,6 +656,7 @@ def process_video(
     is_color: bool = True,
     preview: bool = True,
     show_progress: bool = False,  # Whether to show tqdm progress bar
+    debug_csv_path: str | None = None,  # Path for debug CSV output
 ) -> None:
     """
     Thin facade that wires:
@@ -478,6 +668,8 @@ def process_video(
         Whether to display a tqdm progress bar during video processing.
         When True, calculates total frame count and shows processing progress.
         When False, processes video without progress indication.
+    debug_csv_path : str | None, default=None
+        Optional path to write debug CSV output with all detection states.
     """
     # 1) Modules / state
     pose = PoseEstimator()
@@ -518,6 +710,33 @@ def process_video(
     if output_csv_path:
         csv_file = open(output_csv_path, "w", newline="", encoding="utf-8")  # noqa: SIM115
         csv_writer = setup_csv_writer(csv_file)
+
+    # Debug CSV setup
+    debug_csv_file = None
+    debug_csv_writer = None
+    if debug_csv_path:
+        debug_csv_file = open(debug_csv_path, "w", newline="", encoding="utf-8")  # noqa: SIM115
+        debug_fieldnames = [
+            "timestamp",
+            "frame_idx",
+            "posture_alerts",
+            "posture_forward_ratio",
+            "posture_avg_score",
+            "posture_sample_count",
+            "dwell_is_long_stay",
+            "dwell_stay_duration",
+            "dwell_alert",
+            "head_shake_alerts",
+            "head_shake_detected",
+            "hand_left_raised",
+            "hand_right_raised",
+            "hand_both_raised",
+            "user_classified",
+            "user_classification",
+        ]
+        debug_csv_writer = csv.DictWriter(debug_csv_file, fieldnames=debug_fieldnames)
+        debug_csv_writer.writeheader()
+
     # VideoWriter は最初のフレーム形状で遅延初期化（ソース実寸に一致させる）
     video_writer = None
 
@@ -561,19 +780,37 @@ def process_video(
         rp = globals().get("run_pipeline")
         if not callable(rp):
             raise RuntimeError("run_pipeline is not callable")
-        rp(
-            frame_iter,
-            csv_writer=csv_writer,
-            video_writer=video_writer,
-            state=state,
-            preview=preview,
-            window_name="Integrated Analysis",
-            output_video_path=output_video_path,
-            writer_fps=fps,
-            total_frames=total_frames,
-            show_progress=show_progress,
-        )
+        # Backward-compatible call: pass debug_csv_writer only if accepted
+        try:
+            rp(
+                frame_iter,
+                csv_writer=csv_writer,
+                video_writer=video_writer,
+                state=state,
+                preview=preview,
+                window_name="Integrated Analysis",
+                output_video_path=output_video_path,
+                writer_fps=fps,
+                total_frames=total_frames,
+                show_progress=show_progress,
+                debug_csv_writer=debug_csv_writer,
+            )
+        except TypeError:
+            rp(
+                frame_iter,
+                csv_writer=csv_writer,
+                video_writer=video_writer,
+                state=state,
+                preview=preview,
+                window_name="Integrated Analysis",
+                output_video_path=output_video_path,
+                writer_fps=fps,
+                total_frames=total_frames,
+                show_progress=show_progress,
+            )
     finally:
         # 明示的にCSVファイルをクローズする
         if csv_file is not None and hasattr(csv_file, "close"):
             csv_file.close()
+        if debug_csv_file is not None and hasattr(debug_csv_file, "close"):
+            debug_csv_file.close()
