@@ -60,6 +60,12 @@ class PipelineState:
     last_hand_statuses: dict[str, bool] | None = None
     prev_hand_raised_left: bool = False
     prev_hand_raised_right: bool = False
+    # Blinking state for hand raise detection
+    blink_start_time: float | None = None
+    blink_is_active: bool = False
+    blink_color: str = "255,0,0"  # Default red color (RGB string)
+    blink_duration: float = 3.0  # Default 3 seconds
+    blink_last_toggle_time: float = 0.0  # Track when to toggle blink on/off
 
 
 class VideoProcessor:
@@ -358,6 +364,55 @@ def _load_email_config():
     }
 
 
+def draw_color_frame(frame: np.ndarray, color_str: str, alpha: float = 0.3) -> np.ndarray:
+    """
+    Overlay a semi-transparent color on the entire frame.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        Input frame (BGR format).
+    color_str : str
+        RGB color as string. Supports formats:
+        - "R,G,B" (e.g., "255,0,0" for red)
+        - "#RRGGBB" (e.g., "#FF0000" for red)
+    alpha : float, default=0.3
+        Transparency level (0.0 = fully transparent, 1.0 = fully opaque).
+
+    Returns
+    -------
+    np.ndarray
+        Frame with color overlay applied.
+    """
+    # Parse color string to BGR tuple (OpenCV uses BGR, not RGB)
+    try:
+        if color_str.startswith("#"):
+            # Hex format: #RRGGBB
+            hex_color = color_str.lstrip("#")
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+        else:
+            # Comma-separated format: R,G,B
+            parts = color_str.split(",")
+            r = int(parts[0].strip())
+            g = int(parts[1].strip())
+            b = int(parts[2].strip())
+        # Convert RGB to BGR for OpenCV
+        color_bgr = (b, g, r)
+    except (ValueError, IndexError) as e:
+        # Fallback to red if parsing fails
+        print(f"Warning: Could not parse color '{color_str}': {e}. Using red (255,0,0).")
+        color_bgr = (0, 0, 255)  # Red in BGR
+
+    # Create a solid color overlay
+    overlay = frame.copy()
+    overlay[:] = color_bgr
+
+    # Blend the overlay with the frame
+    return cv2.addWeighted(frame, 1.0 - alpha, overlay, alpha, 0)
+
+
 def process_frame(
     frame: np.ndarray, t: float, state: PipelineState, debug_csv_writer: csv.DictWriter | None = None
 ) -> tuple[np.ndarray, dict[Angle, dict[str, float | MovementState]], list[str], dict[str, Any]]:
@@ -469,6 +524,10 @@ def process_frame(
                 f"🙌 Hand(s) raised detected: "
                 f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
             )
+            # Start blinking effect
+            state.blink_start_time = t
+            state.blink_is_active = True
+            state.blink_last_toggle_time = t
 
         # Email notification on False->True transitions (only once per transition)
         try:
@@ -526,6 +585,25 @@ def process_frame(
         landmarks,
         t,
     )
+
+    # Handle blinking color overlay when hand is raised
+    if state.blink_start_time is not None:
+        elapsed = t - state.blink_start_time
+        if elapsed <= state.blink_duration:
+            # Toggle blink state every 0.15 seconds (roughly 4-5 frames at 30fps)
+            time_since_last_toggle = t - state.blink_last_toggle_time
+            if time_since_last_toggle >= 0.15:
+                state.blink_is_active = not state.blink_is_active
+                state.blink_last_toggle_time = t
+
+            # Apply color overlay when blink is active
+            if state.blink_is_active:
+                frame = draw_color_frame(frame, state.blink_color, alpha=0.4)
+        else:
+            # Blinking duration has passed, reset state
+            state.blink_start_time = None
+            state.blink_is_active = False
+
     return frame, results, alerts, aux
 
 
