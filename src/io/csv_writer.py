@@ -221,7 +221,7 @@ def write_results_to_csv(
                 "mediapipe_face_detected": status.get("face_detected", False),
                 "mediapipe_turn_direction": status.get("direction", ""),
                 "mediapipe_sustained_turn_detected": status.get("is_sustained", False),
-                "mediapipe_sustained_direction": status.get("current_direction", ""),
+                "mediapipe_sustained_direction": status.get("sustained_direction", ""),
                 "mediapipe_sustained_frames": status.get("consecutive_frames", 0),
             }
         )

@@ -235,13 +235,7 @@ def draw_mediapipe_head_turn_info(
 
     status = mediapipe_detector.get_status()
 
-    # フレーム左上にヨー角を表示
-    yaw_angle = status.get("yaw_angle", 0.0)
-    yaw_text = f"Yaw: {yaw_angle:.1f}" if disable_jp else f"ヨー角: {yaw_angle:.1f}度"
-
-    cv2.putText(frame, yaw_text, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-    # 方向を色分けして表示
+    # 方向を色分けして表示（頭部方向表示のみ）
     direction = status.get("direction", "正面")
     if direction == "左向き":
         color = (255, 0, 0)  # 青
@@ -261,41 +255,6 @@ def draw_mediapipe_head_turn_info(
         )
     else:
         frame = draw_japanese_text(frame, f"頭部: {dir_text}", (frame.shape[1] - 200, 60), 24, color)
-
-    # 持続的方向転換検知時に大きなアラート表示
-    if status.get("is_sustained", False):
-        sustained_dir = status.get("current_direction", "")
-        sustained_frames = status.get("consecutive_frames", 0)
-
-        if sustained_dir != "正面":  # 正面は通知しない
-            # 画面中央下部に大きなアラート
-            alert_y = frame.shape[0] - 120
-
-            if disable_jp:
-                alert_text = f"HEAD TURN DETECTED: {sustained_dir} ({sustained_frames} frames)"
-            else:
-                alert_text = f"🎯 {sustained_dir}を検知! ({sustained_frames}フレーム)"
-
-            # 背景矩形を描画
-            text_size = cv2.getTextSize(alert_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
-            rect_x1 = (frame.shape[1] - text_size[0]) // 2 - 20
-            rect_x2 = (frame.shape[1] + text_size[0]) // 2 + 20
-            cv2.rectangle(frame, (rect_x1, alert_y - 40), (rect_x2, alert_y + 10), (0, 0, 0), -1)
-            cv2.rectangle(frame, (rect_x1, alert_y - 40), (rect_x2, alert_y + 10), color, 3)
-
-            # テキストを描画
-            if disable_jp:
-                cv2.putText(
-                    frame,
-                    alert_text,
-                    ((frame.shape[1] - text_size[0]) // 2, alert_y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.2,
-                    color,
-                    3,
-                )
-            else:
-                frame = draw_japanese_text(frame, alert_text, ((frame.shape[1] - text_size[0]) // 2, alert_y), 32, color)
 
     return frame
 

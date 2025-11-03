@@ -294,3 +294,4 @@
 - **仮説レポート**: `docs/shopkeeper_search_hypothesis_analysis.md`
 
 
+

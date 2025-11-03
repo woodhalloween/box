@@ -15,6 +15,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from ..definitions import MovementState
 from .base_detector import PostureAndMotionDetectorBase
 
 
@@ -313,6 +314,14 @@ class MediaPipeFaceMeshHeadTurnDetector(PostureAndMotionDetectorBase):
         Returns:
             dict[str, Any]: 検出器の状態
         """
+        # 持続的方向転換の方向を決定
+        sustained_direction = ""
+        if self._head_state.is_sustained and self._head_state.current_direction != "正面":
+            if self._head_state.current_direction == "左向き":
+                sustained_direction = MovementState.MEDIAPIPE_SUSTAINED_LEFT.value
+            elif self._head_state.current_direction == "右向き":
+                sustained_direction = MovementState.MEDIAPIPE_SUSTAINED_RIGHT.value
+
         return {
             "face_detected": self._head_state.face_detected,
             "yaw_angle": self._head_state.yaw_angle,
@@ -320,6 +329,7 @@ class MediaPipeFaceMeshHeadTurnDetector(PostureAndMotionDetectorBase):
             "consecutive_frames": self._head_state.consecutive_frames,
             "confidence": self._head_state.confidence,
             "is_sustained": self._head_state.is_sustained,
+            "sustained_direction": sustained_direction,  # 持続的方向転換の方向
             "min_consecutive_frames": self.min_consecutive_frames,
             "yaw_threshold_right": self.yaw_threshold_right,
             "yaw_threshold_left": self.yaw_threshold_left,

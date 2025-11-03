@@ -369,3 +369,4 @@ class ShopkeeperSearchDetector(PostureAndMotionDetectorBase):
 - Shoelace公式: ポリゴン面積計算
 
 
+

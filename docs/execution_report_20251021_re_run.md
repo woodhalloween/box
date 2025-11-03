@@ -394,3 +394,4 @@ def draw_analysis_results(image, results, hand_statuses, landmarks, fps=0.0, ...
 **レポート種別**: 処理実行レポート（再実行版）
 
 
+
