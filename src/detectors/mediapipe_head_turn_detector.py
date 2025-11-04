@@ -183,10 +183,9 @@ class MediaPipeFaceMeshHeadTurnDetector(PostureAndMotionDetectorBase):
         """
         if yaw_angle >= self.yaw_threshold_right:
             return "右向き"
-        elif yaw_angle <= self.yaw_threshold_left:
+        if yaw_angle <= self.yaw_threshold_left:
             return "左向き"
-        else:
-            return "正面"
+        return "正面"
 
     def _update_consecutive_frames(self, current_direction: str) -> int:
         """連続フレーム数を更新する。
@@ -356,4 +355,3 @@ class MediaPipeFaceMeshHeadTurnDetector(PostureAndMotionDetectorBase):
             "confidence": self._head_state.confidence,
             "is_sustained": self._head_state.is_sustained,
         }
-

@@ -104,6 +104,8 @@ def _mk_state(
     s.last_landmarks = "UNTOUCHED"
     s.last_head_alerts = "UNTOUCHED"
     s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
     return s
 
 
@@ -265,6 +267,8 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -315,6 +319,8 @@ def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -368,6 +374,8 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -387,3 +395,324 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     # Should complete without exceptions, alerts should not contain anything from user_classifier
     assert out_frame is frame
     # No assertion errors should have occurred
+
+
+def test_process_frame_hand_raise_detection_indexerror(monkeypatch, capsys):
+    """
+    Test lines 324-331: Hand raise detection with IndexError exception.
+    When hand_raise_detector.detect() raises IndexError, it should be caught,
+    a warning should be printed, hand_statuses should be set to None,
+    and state.last_hand_statuses should be updated.
+    """
+
+    class HandRaiseDetectorWithIndexError:
+        def detect(self, landmarks):
+            raise IndexError("Landmark index out of range")
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithIndexError()
+    s.user_classifier = object()
+    s.frame_idx = 0
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+    # Verify the warning was printed
+    captured = capsys.readouterr()
+    assert (
+        "Warning: Hand raise detection failed due to landmark data issue: Landmark index out of range" in captured.out
+    )
+
+    # Verify state was updated correctly
+    assert s.last_hand_statuses is None
+    assert out_frame is frame
+
+
+def test_process_frame_hand_raise_detection_typeerror(monkeypatch, capsys):
+    """
+    Test lines 324-331: Hand raise detection with TypeError exception.
+    When hand_raise_detector.detect() raises TypeError, it should be caught,
+    a warning should be printed, hand_statuses should be set to None,
+    and state.last_hand_statuses should be updated.
+    """
+
+    class HandRaiseDetectorWithTypeError:
+        def detect(self, landmarks):
+            raise TypeError("Invalid landmark data type")
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithTypeError()
+    s.user_classifier = object()
+    s.frame_idx = 0
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+    # Verify the warning was printed
+    captured = capsys.readouterr()
+    assert "Warning: Hand raise detection failed due to landmark data issue: Invalid landmark data type" in captured.out
+
+    # Verify state was updated correctly
+    assert s.last_hand_statuses is None
+    assert out_frame is frame
+
+
+def test_process_frame_hand_raise_detection_valueerror(monkeypatch, capsys):
+    """
+    Test lines 324-331: Hand raise detection with ValueError exception.
+    When hand_raise_detector.detect() raises ValueError, it should be caught,
+    a warning should be printed, hand_statuses should be set to None,
+    and state.last_hand_statuses should be updated.
+    """
+
+    class HandRaiseDetectorWithValueError:
+        def detect(self, landmarks):
+            raise ValueError("Invalid landmark values")
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithValueError()
+    s.user_classifier = object()
+    s.frame_idx = 0
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+    # Verify the warning was printed
+    captured = capsys.readouterr()
+    assert "Warning: Hand raise detection failed due to landmark data issue: Invalid landmark values" in captured.out
+
+    # Verify state was updated correctly
+    assert s.last_hand_statuses is None
+    assert out_frame is frame
+
+
+def test_process_frame_hand_raise_detection_unexpected_exception(monkeypatch, capsys):
+    """
+    Test lines 324-331: Hand raise detection with unexpected Exception.
+    When hand_raise_detector.detect() raises an unexpected exception (not IndexError, TypeError, ValueError),
+    it should be caught by the general Exception handler, an error should be printed,
+    hand_statuses should be set to None, and state.last_hand_statuses should be updated.
+    """
+
+    class HandRaiseDetectorWithUnexpectedError:
+        def detect(self, landmarks):
+            raise RuntimeError("Unexpected runtime error")
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithUnexpectedError()
+    s.user_classifier = object()
+    s.frame_idx = 0
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+    # Verify the error was printed
+    captured = capsys.readouterr()
+    assert "Error: Unexpected error in hand raise detection: Unexpected runtime error" in captured.out
+
+    # Verify state was updated correctly
+    assert s.last_hand_statuses is None
+    assert out_frame is frame
+
+
+def test_process_frame_hand_raise_detection_success(monkeypatch):
+    """
+    Test lines 324-331: Hand raise detection successful case.
+    When hand_raise_detector.detect() succeeds, it should return the expected result,
+    and state.last_hand_statuses should be updated with the returned value.
+    """
+    expected_hand_statuses = {"left_hand_raised": True, "right_hand_raised": False}
+
+    class HandRaiseDetectorSuccess:
+        def detect(self, landmarks):
+            return expected_hand_statuses
+
+    # Minimal state
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorSuccess()
+    s.user_classifier = object()
+    s.frame_idx = 0
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+
+    # Patch draw functions to pass-through
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+    # Verify state was updated correctly with the expected result
+    assert s.last_hand_statuses == expected_hand_statuses
+    assert out_frame is frame
+
+
+def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeypatch, capsys):
+    """
+    Test lines 324-331: Ensure all exception types are properly covered.
+    This test verifies that the exception handling covers all the specific exception types
+    mentioned in the code (IndexError, TypeError, ValueError) and the general Exception handler.
+    """
+    # Test that all three specific exceptions are handled the same way
+    specific_exceptions = [
+        (IndexError, "Index out of bounds"),
+        (TypeError, "Type mismatch"),
+        (ValueError, "Invalid value"),
+    ]
+
+    def create_detector_with_exception(exc_type, message):
+        """Create a detector that raises the specified exception."""
+
+        class HandRaiseDetectorWithSpecificError:
+            def detect(self, landmarks):
+                raise exc_type(message)
+
+        return HandRaiseDetectorWithSpecificError()
+
+    for exc_type, message in specific_exceptions:
+        # Minimal state
+        class State:
+            pass
+
+        s = State()
+        s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+        s.analyzer = _AnalyzerFake({})
+        s.posture_monitor = _PostureMonitorFake([])
+        s.dwell_time_detector = _DwellFake(None)
+        s.head_shake_detector = _HeadShakeFake({}, [])
+        s.hand_raise_detector = create_detector_with_exception(exc_type, message)
+        s.user_classifier = object()
+        s.frame_idx = 0
+        s.disable_jp = True
+        s.last_landmarks = None
+        s.last_head_alerts = []
+        s.last_hand_statuses = "UNTOUCHED"
+        s.prev_hand_raised_left = False
+        s.prev_hand_raised_right = False
+
+        # Patch draw functions to pass-through
+        monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+        monkeypatch.setattr(
+            "src.video_processor.draw_analysis_results",
+            lambda f, r, hand_statuses, lm, disable_japanese: f,
+        )
+        monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+
+        frame = np.zeros((10, 10, 3), dtype=np.uint8)
+        out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
+
+        # Verify the warning was printed for specific exceptions
+        captured = capsys.readouterr()
+        assert f"Warning: Hand raise detection failed due to landmark data issue: {message}" in captured.out
+
+        # Verify state was updated correctly
+        assert s.last_hand_statuses is None
+        assert out_frame is frame

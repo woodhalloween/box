@@ -82,3 +82,6 @@ tests/**/.coverage
 output/
 # Experiments (external repositories for local testing)
 experiments/
+
+# config files
+config.ini

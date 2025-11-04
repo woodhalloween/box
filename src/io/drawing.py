@@ -173,7 +173,7 @@ def draw_analysis_results(
     img_with_text = image.copy()
 
     # --- FPSを描画 ---
-    fps_val = float(fps) if isinstance(fps, (int, float, np.ndarray)) else 0.0
+    fps_val = float(fps) if isinstance(fps, int | float | np.ndarray) else 0.0
     fps_text = f"FPS: {fps_val:.2f}"
     # 右上に白で描画
     img_with_text = draw_japanese_text(img_with_text, fps_text, (w - 150, 30), 20, (255, 255, 255))
@@ -217,9 +217,7 @@ def draw_analysis_results(
     return img_with_text
 
 
-def draw_mediapipe_head_turn_info(
-    frame: np.ndarray, mediapipe_detector, disable_jp: bool = False
-) -> np.ndarray:
+def draw_mediapipe_head_turn_info(frame: np.ndarray, mediapipe_detector, disable_jp: bool = False) -> np.ndarray:
     """MediaPipe Face Mesh頭部方向検知の結果を描画する。
 
     Args:
@@ -250,9 +248,7 @@ def draw_mediapipe_head_turn_info(
     dir_text = direction if not disable_jp else direction_en
 
     if disable_jp:
-        cv2.putText(
-            frame, f"Head: {dir_text}", (frame.shape[1] - 200, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2
-        )
+        cv2.putText(frame, f"Head: {dir_text}", (frame.shape[1] - 200, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
     else:
         frame = draw_japanese_text(frame, f"頭部: {dir_text}", (frame.shape[1] - 200, 60), 24, color)
 

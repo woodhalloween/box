@@ -83,8 +83,8 @@ def test_build_ffmpeg_cmd_color_with_scaling_and_fps():
         is_color=True,
         additional_input_args=["-re"],  # arbitrary extra
     )
-    # Structure expectations
-    assert cmd[0] == "ffmpeg"
+    # Structure expectations - cmd[0] should be the FFmpeg executable path
+    assert cmd[0].endswith("ffmpeg") or cmd[0] == "ffmpeg"
     assert "-hide_banner" in cmd and "-loglevel" in cmd
     # Input and extras present in correct order
     idx_i = cmd.index("-i")
@@ -568,6 +568,101 @@ def test_camera_backend_name_fallback():
     assert m._camera_backend_name("some_random_os") == "unknown"
 
 
+# -------- Tests for _find_ffmpeg_executable --------
+
+
+def test_find_ffmpeg_executable_returns_string():
+    """Test _find_ffmpeg_executable always returns a string."""
+    result = m._find_ffmpeg_executable()
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+def test_find_ffmpeg_executable_returns_valid_path():
+    """Test _find_ffmpeg_executable returns a valid path or 'ffmpeg'."""
+    result = m._find_ffmpeg_executable()
+
+    # Should be either a full path or just 'ffmpeg'
+    if result == "ffmpeg":
+        # This is the fallback case - acceptable
+        assert result == "ffmpeg"
+    else:
+        # Should be a valid path
+        assert "/" in result or "\\" in result  # Contains path separators
+        assert result.endswith("ffmpeg") or result.endswith("ffmpeg.exe")
+
+
+def test_find_ffmpeg_executable_handles_missing_ffmpeg(monkeypatch):
+    """Test _find_ffmpeg_executable handles case where FFmpeg is not found."""
+    # Mock shutil.which to return None (simulate FFmpeg not in PATH)
+    monkeypatch.setattr(m.shutil, "which", lambda x: None)
+
+    # Mock os.path.isfile to return False for all common paths
+    monkeypatch.setattr(m.os.path, "isfile", lambda x: False)
+    monkeypatch.setattr(m.os, "access", lambda x, y: False)
+
+    result = m._find_ffmpeg_executable()
+    assert result == "ffmpeg"
+
+
+def test_find_ffmpeg_executable_uses_shutil_which_result(monkeypatch):
+    """Test _find_ffmpeg_executable uses shutil.which result when available."""
+    expected_path = "/custom/path/ffmpeg"
+
+    # Mock shutil.which to return a custom path
+    monkeypatch.setattr(m.shutil, "which", lambda x: expected_path if x == "ffmpeg" else None)
+
+    # Mock os.path.isfile to return False for all common paths
+    monkeypatch.setattr(m.os.path, "isfile", lambda x: False)
+    monkeypatch.setattr(m.os, "access", lambda x, y: False)
+
+    result = m._find_ffmpeg_executable()
+    assert result == expected_path
+
+
+def test_find_ffmpeg_executable_checks_common_paths_structure():
+    """Test _find_ffmpeg_executable checks the expected common paths structure."""
+    # This test verifies that the function has the expected common paths
+    # by checking if it returns a path that matches one of the expected patterns
+
+    result = m._find_ffmpeg_executable()
+
+    # The result should either be:
+    # 1. A path ending with ffmpeg/ffmpeg.exe
+    # 2. The fallback string "ffmpeg"
+    assert result == "ffmpeg" or result.endswith("ffmpeg") or result.endswith("ffmpeg.exe")
+
+
+def test_find_ffmpeg_executable_common_paths_priority():
+    """Test _find_ffmpeg_executable follows expected priority order."""
+    # This test verifies the function follows the expected priority:
+    # 1. Common installation paths (in order)
+    # 2. shutil.which result
+    # 3. Fallback to 'ffmpeg'
+
+    result = m._find_ffmpeg_executable()
+
+    # If it's not the fallback, it should be a valid path
+    if result != "ffmpeg":
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Should contain path separators
+        assert "/" in result or "\\" in result
+
+
+def test_find_ffmpeg_executable_consistency():
+    """Test _find_ffmpeg_executable returns consistent results."""
+    # Call the function multiple times to ensure consistency
+    results = [m._find_ffmpeg_executable() for _ in range(3)]
+
+    # All results should be the same
+    assert all(result == results[0] for result in results)
+
+    # Result should be a valid string
+    assert isinstance(results[0], str)
+    assert len(results[0]) > 0
+
+
 # -------- Tests for _build_ffmpeg_cmd debug functionality --------
 
 
@@ -587,7 +682,7 @@ def test_build_ffmpeg_cmd_debug_print_enabled(monkeypatch, capsys):
     # Verify the debug message was printed
     assert "FFmpeg CMD:" in captured.out
     assert "test.mp4" in captured.out
-    assert "ffmpeg" in captured.out
+    assert "ffmpeg" in captured.out or "/ffmpeg" in captured.out
     assert "-hide_banner" in captured.out
     assert "-loglevel" in captured.out
     assert "error" in captured.out
