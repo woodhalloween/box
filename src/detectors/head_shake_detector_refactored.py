@@ -170,6 +170,11 @@ class HeadShakeDetector(PostureAndMotionDetectorBase):
         self._h_consecutive_frames: int = 0
         self._v_consecutive_frames: int = 0
 
+        # アラート管理（後方互換性のため）
+        self.last_horizontal_alert_time: float = float("-inf")
+        self.last_vertical_alert_time: float = float("-inf")
+        self.alert_cooldown: float = 10.0  # アラート間隔（秒）
+
     def detect(
         self,
         landmarks: np.ndarray | None,
@@ -255,6 +260,40 @@ class HeadShakeDetector(PostureAndMotionDetectorBase):
             },
         }
 
+    def check_alerts(self, timestamp: float) -> list[str]:
+        """
+        現在の頭部状態に基づき、アラートを発行すべきかチェックします。
+
+        周期的な首振り（`HORIZONTAL_SHAKE`）またはうなずき（`VERTICAL_NOD`）が
+        検出された場合にアラートメッセージを生成します。
+        連続してアラートが発生するのを防ぐため、クールダウン期間（`alert_cooldown`）を設けています。
+
+        Args:
+            timestamp (float): 現在のタイムスタンプ（秒）。
+
+        Returns:
+            list[str]: 生成されたアラートメッセージのリスト。アラートがない場合は空のリスト。
+        """
+        alerts = []
+
+        # 水平首振りアラート
+        if (
+            self._current_horizontal_state == MovementState.HORIZONTAL_SHAKE
+            and timestamp - self.last_horizontal_alert_time > self.alert_cooldown
+        ):
+            alerts.append("[!] Horizontal Head Shake Detected")
+            self.last_horizontal_alert_time = timestamp
+
+        # 垂直うなずきアラート
+        if (
+            self._current_vertical_state == MovementState.VERTICAL_NOD
+            and timestamp - self.last_vertical_alert_time > self.alert_cooldown
+        ):
+            alerts.append("[!] Vertical Head Nod Detected")
+            self.last_vertical_alert_time = timestamp
+
+        return alerts
+
     def get_status(self) -> dict[str, Any]:
         """
         検出器の現在の状態を取得する。
@@ -297,6 +336,8 @@ class HeadShakeDetector(PostureAndMotionDetectorBase):
         self._v_state_candidate = MovementState.HEAD_STATIC
         self._h_consecutive_frames = 0
         self._v_consecutive_frames = 0
+        self.last_horizontal_alert_time = float("-inf")
+        self.last_vertical_alert_time = float("-inf")
 
     # ==================== Internal Methods ====================
 
