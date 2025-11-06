@@ -181,7 +181,14 @@ class VideoProcessor:
         self.posture_monitor = PostureMonitor(
             monitoring_duration=self.pm_monitoring_duration_sec, alert_threshold=self.pm_alert_threshold_ratio
         )
-        self.head_shake_detector = HeadShakeDetector()
+        self.head_shake_detector = HeadShakeDetector(
+            horizontal_threshold=15.0,
+            vertical_threshold=10.0,
+            cycle_detection_window=60,
+            min_oscillations=1,
+            confidence_threshold=0.5,
+            hysteresis_frames=3,
+        )
         self.hand_raise_detector = HandRaiseDetector(visibility_threshold=0.5, min_consecutive_frames=3)
 
         # MediaPipe Face Mesh 頭部方向検知（オプション）
@@ -731,9 +738,11 @@ def process_video(
     )
     head = HeadShakeDetector(
         horizontal_threshold=15.0,
-        vertical_threshold=10.0,
-        cycle_detection_window=60,
-        min_oscillations=2,
+        vertical_threshold=60.0,
+        cycle_detection_window=10,
+        min_oscillations=1,
+        confidence_threshold=0.5,
+        hysteresis_frames=3,
     )
     hand_raise_detector = HandRaiseDetector(
         visibility_threshold=hand_raise_visibility_threshold,

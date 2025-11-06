@@ -250,3 +250,49 @@ def test__calculate_head_angles_exception_returns_zeros():
     empty = np.empty((0, 4), dtype=np.float32)
     h, v = analyzer._calculate_head_angles(empty)
     assert (h, v) == (0.0, 0.0)
+
+
+def test_body_tilt_angle_nan_returns_unknown_state():
+    """When body_tilt_angle is NaN (due to coincident shoulder and hip midpoints), state should be UNKNOWN."""
+    analyzer = MovementAnalyzer(confidence_threshold=0.7)
+    lm = _make_base_landmarks(conf=1.0)
+
+    # Make left and right shoulders identical, and left and right hips identical
+    # This causes shoulder_mid and hip_mid to be the same, making v1 zero-length in calculate_angle
+    # Set shoulders and hips to the exact same position
+    same_pos = [0.5, 0.5, 0.0, 1.0]
+    lm[PoseLandmark.LEFT_SHOULDER.value] = same_pos
+    lm[PoseLandmark.RIGHT_SHOULDER.value] = same_pos
+    lm[PoseLandmark.LEFT_HIP.value] = same_pos
+    lm[PoseLandmark.RIGHT_HIP.value] = same_pos
+
+    results = analyzer.analyze(lm)
+
+    # Body tilt angle should be NaN, and state should be UNKNOWN
+    assert Angle.BODY_TILT in results
+    assert np.isnan(results[Angle.BODY_TILT]["angle"])
+    assert results[Angle.BODY_TILT]["state"] == MovementState.UNKNOWN
+
+
+def test_neck_trunk_angle_nan_returns_unknown_state():
+    """When neck_trunk_angle is NaN (due to coincident hip and shoulder midpoints), state should be UNKNOWN."""
+    analyzer = MovementAnalyzer(confidence_threshold=0.7)
+    lm = _make_base_landmarks(conf=1.0)
+
+    # Make left and right shoulders identical, and left and right hips identical
+    # This causes shoulder_mid and hip_mid to be the same, making v1 zero-length in calculate_angle
+    # Set shoulders and hips to the exact same position
+    same_pos = [0.5, 0.5, 0.0, 1.0]
+    lm[PoseLandmark.LEFT_SHOULDER.value] = same_pos
+    lm[PoseLandmark.RIGHT_SHOULDER.value] = same_pos
+    lm[PoseLandmark.LEFT_HIP.value] = same_pos
+    lm[PoseLandmark.RIGHT_HIP.value] = same_pos
+    # Ensure nose has valid confidence
+    lm[PoseLandmark.NOSE.value, 3] = 1.0
+
+    results = analyzer.analyze(lm)
+
+    # Neck trunk angle should be NaN, and state should be UNKNOWN
+    assert Angle.NECK_TRUNK_ANGLE in results
+    assert np.isnan(results[Angle.NECK_TRUNK_ANGLE]["angle"])
+    assert results[Angle.NECK_TRUNK_ANGLE]["state"] == MovementState.UNKNOWN

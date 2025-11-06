@@ -173,7 +173,8 @@ class HeadShakeDetector(PostureAndMotionDetectorBase):
         # アラート管理（後方互換性のため）
         self.last_horizontal_alert_time: float = float("-inf")
         self.last_vertical_alert_time: float = float("-inf")
-        self.alert_cooldown: float = 10.0  # アラート間隔（秒）
+        # self.alert_cooldown: float = 10.0  # アラート間隔（秒）
+        self.alert_cooldown: float = 1.0  # アラート間隔（秒）
 
     def detect(
         self,
