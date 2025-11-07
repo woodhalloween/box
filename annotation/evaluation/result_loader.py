@@ -257,7 +257,7 @@ class ResultLoader:
             print(f"  {event_type}:")
             print(f"    - イベント数: {stats['count']}")
             print(f"    - 総時間: {stats['duration']:.2f}秒")
-            print(f"    - 平均時間: {stats['duration']/stats['count']:.2f}秒")
+            print(f"    - 平均時間: {stats['duration'] / stats['count']:.2f}秒")
 
 
 def main():
