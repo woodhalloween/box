@@ -575,6 +575,91 @@ def _apply_common_state_defaults(state) -> None:
         state.prev_head_shake_vertical = False
 
 
+def test_process_frame_head_alerts_appended_before_state_reset(monkeypatch):
+    """
+    Exercise lines 464-467: alerts.extend(head_alerts) populates the outgoing list
+    even when head alerts exist and previous state flags start False.
+    """
+    landmarks = np.zeros((33, 4))
+
+    def fake_draw(frame, *args, **kwargs):
+        return frame
+
+    monkeypatch.setattr("src.video_processor.draw_landmarks", fake_draw)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda frame, results, hand_statuses, landmarks, disable_japanese: frame,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", fake_draw)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda frame, color, alpha=0.4: frame)
+    monkeypatch.setattr("src.video_processor.write_results_to_csv", lambda **kwargs: None)
+    monkeypatch.setattr(
+        "src.video_processor._load_email_config",
+        lambda: {
+            "username": "",
+            "password": "",
+            "smtp_server": "",
+            "smtp_port": "587",
+            "subject": "",
+            "recipient": "",
+        },
+    )
+    monkeypatch.setattr("src.video_processor.BasicNotification", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "src.video_processor.EmailNotificationDecorator",
+        lambda base, **kwargs: SimpleNamespace(send=lambda *a, **k: None),
+    )
+
+    class HeadShakeWithAlerts:
+        def __init__(self):
+            self.detect_calls = 0
+            self.update_calls = 0
+
+        def detect(self, landmarks, t, frame_idx):
+            self.detect_calls += 1
+            return {
+                "horizontal_state": MovementState.HORIZONTAL_SHAKE,
+                "vertical_state": MovementState.VERTICAL_NOD,
+                "horizontal_angle": 5.0,
+                "vertical_angle": -3.0,
+                "confidence": 0.9,
+            }
+
+        def update(self, *a, **k):
+            self.update_calls += 1
+            return {}
+
+        def check_alerts(self, t):
+            return ["[!] Horizontal Head Shake Detected", "[!] Vertical Head Nod Detected"]
+
+    state = _make_pipeline_state()
+    state.pose = SimpleNamespace(estimate=lambda frame: landmarks)
+    state.analyzer = SimpleNamespace(analyze=lambda lm: {"metric": 1.0})
+    state.posture_monitor = SimpleNamespace(
+        update=lambda *a, **k: [],
+        get_status=lambda: {"forward_ratio": 0.0, "avg_score": 0.0, "sample_count": 0},
+    )
+    state.dwell_time_detector = SimpleNamespace(
+        update=lambda *a, **k: None,
+        get_current_status=lambda: {"is_long_stay": False, "stay_duration": 0.0},
+        stay_info=None,
+    )
+    state.head_shake_detector = HeadShakeWithAlerts()
+    state.hand_raise_detector = SimpleNamespace(detect=lambda **k: {})
+    state.user_classifier = SimpleNamespace(update=lambda *a, **k: [], get_current_alert=lambda: None)
+    state.prev_head_shake_horizontal = False
+    state.prev_head_shake_vertical = False
+    state.frame_idx = 12
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=2.2, state=state)
+
+    assert "[!] Horizontal Head Shake Detected" in alerts
+    assert "[!] Vertical Head Nod Detected" in alerts
+    assert state.prev_head_shake_horizontal is True
+    assert state.prev_head_shake_vertical is True
+
+
 class _PoseFake:
     def __init__(self, landmarks):
         self._landmarks = landmarks
