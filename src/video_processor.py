@@ -65,9 +65,18 @@ class PipelineState:
     # Blinking state for hand raise detection
     blink_start_time: float | None = None
     blink_is_active: bool = False
-    blink_color: str = "255,0,0"  # Default red color (RGB string)
+    blink_color: str = "255,255,0"  # Default yellow color (RGB string)
     blink_duration: float = 3.0  # Default 3 seconds
     blink_last_toggle_time: float = 0.0  # Track when to toggle blink on/off
+    # Blinking state for head shake detection
+    head_shake_blink_start_time: float | None = None
+    head_shake_blink_is_active: bool = False
+    head_shake_blink_color: str = "255,0,0"  # Default red color (RGB string)
+    head_shake_blink_duration: float = 3.0  # Default 3 seconds
+    head_shake_blink_last_toggle_time: float = 0.0  # Track when to toggle blink on/off
+    # Previous head shake state tracking
+    prev_head_shake_horizontal: bool = False
+    prev_head_shake_vertical: bool = False
 
 
 class VideoProcessor:
@@ -254,8 +263,24 @@ class VideoProcessor:
         self.user_classifier.update(timestamp, analysis_results)
         dwell_alert = self.dwell_time_detector.update(landmarks, frame.shape, timestamp)
         posture_alerts = self.posture_monitor.update(timestamp, frame_count, analysis_results)
-        head_shake_results = self.head_shake_detector.update(landmarks, timestamp, frame_count)
-        analysis_results.update(head_shake_results)
+        head_shake_results: dict[Angle, dict[str, Any]] = {}
+        detect_fn = getattr(self.head_shake_detector, "detect", None)
+        if callable(detect_fn):
+            try:
+                raw_head_shake = detect_fn(landmarks, timestamp, frame_count)
+            except TypeError:
+                raw_head_shake = detect_fn(landmarks, timestamp)
+            head_shake_results = _normalize_head_shake_results(raw_head_shake)
+
+        if not head_shake_results:
+            update_fn = getattr(self.head_shake_detector, "update", None)
+            if callable(update_fn):
+                head_shake_results = update_fn(landmarks, timestamp, frame_count)
+
+        if isinstance(head_shake_results, dict):
+            analysis_results.update(head_shake_results)
+        else:
+            head_shake_results = {}
         head_shake_alerts = self.head_shake_detector.check_alerts(timestamp)
 
         user_is_classified = self.user_classifier.get_current_alert() is not None
@@ -420,6 +445,44 @@ def _load_email_config():
     }
 
 
+def _normalize_head_shake_results(raw_result: Any) -> dict[Angle, dict[str, Any]]:
+    """Convert head shake detector output into the Angle-keyed structure expected downstream."""
+
+    if not raw_result:
+        return {}
+
+    if isinstance(raw_result, dict):
+        # Already in the expected Angle-keyed format
+        if any(isinstance(key, Angle) for key in raw_result):
+            return raw_result  # type: ignore[return-value]
+
+        required_keys = {
+            "horizontal_state",
+            "vertical_state",
+            "horizontal_angle",
+            "vertical_angle",
+            "confidence",
+        }
+        if required_keys.issubset(raw_result):
+            return {
+                Angle.HEAD_HORIZONTAL_ROTATION: {
+                    "angle": raw_result.get("horizontal_angle", 0.0),
+                    "state": raw_result.get("horizontal_state", MovementState.HEAD_STATIC),
+                    "confidence": raw_result.get("confidence", 0.0),
+                },
+                Angle.HEAD_VERTICAL_NOD: {
+                    "angle": raw_result.get("vertical_angle", 0.0),
+                    "state": raw_result.get("vertical_state", MovementState.HEAD_STATIC),
+                    "confidence": raw_result.get("confidence", 0.0),
+                },
+            }
+
+        # Fallback: assume caller provided a ready-to-merge dict (legacy tests/mocks)
+        return raw_result  # type: ignore[return-value]
+
+    return {}
+
+
 def process_frame(
     frame: np.ndarray, t: float, state: PipelineState, debug_csv_writer: csv.DictWriter | None = None
 ) -> tuple[np.ndarray, dict[Angle, dict[str, float | MovementState]], list[str], dict[str, Any]]:
@@ -460,11 +523,91 @@ def process_frame(
     aux["dwell_alert"] = dwell_alert
 
     # Head shake
-    hs_results = state.head_shake_detector.update(landmarks, t, state.frame_idx)
-    results.update(hs_results)
+    head_shake_results: dict[Angle, dict[str, Any]] = {}
+    detect_fn = getattr(state.head_shake_detector, "detect", None)
+    if callable(detect_fn):
+        try:
+            raw_head_shake = detect_fn(landmarks, t, state.frame_idx)
+        except TypeError:
+            raw_head_shake = detect_fn(landmarks, t)
+        head_shake_results = _normalize_head_shake_results(raw_head_shake)
+
+    if not head_shake_results:
+        update_fn = getattr(state.head_shake_detector, "update", None)
+        if callable(update_fn):
+            head_shake_results = update_fn(landmarks, t, state.frame_idx)
+
+    if isinstance(head_shake_results, dict):
+        results.update(head_shake_results)
+    else:
+        head_shake_results = {}
     head_alerts = state.head_shake_detector.check_alerts(t)
     alerts.extend(head_alerts)
     state.last_head_alerts = head_alerts
+
+    # Head shake console printing and email notification (similar to hand raise detection)
+    if head_alerts:
+        # Determine which type of head shake was detected
+        horizontal_shake_detected = any("Horizontal" in alert for alert in head_alerts)
+        vertical_nod_detected = any("Vertical" in alert for alert in head_alerts)
+
+        # Detect transitions from False to True
+        horizontal_transition = horizontal_shake_detected and not state.prev_head_shake_horizontal
+        vertical_transition = vertical_nod_detected and not state.prev_head_shake_vertical
+
+        if horizontal_transition or vertical_transition:
+            print(
+                f"[Frame {state.frame_idx} @ {t:.3f}s] "
+                f"👋 Head shake detected: "
+                f"horizontal={horizontal_shake_detected}, vertical={vertical_nod_detected}"
+            )
+            # Start blinking effect for head shake
+            state.head_shake_blink_start_time = t
+            state.head_shake_blink_is_active = True
+            state.head_shake_blink_last_toggle_time = t
+
+        # Email notification on False->True transitions (only once per transition)
+        try:
+            if horizontal_transition or vertical_transition:
+                email_config = _load_email_config()
+                username = email_config["username"]
+                password = email_config["password"]
+                smtp_server = email_config["smtp_server"]
+                smtp_port = int(email_config["smtp_port"] or "587")
+                subject = email_config["subject"]
+                recipient = email_config["recipient"]
+
+                notification = BasicNotification()
+                notification = EmailNotificationDecorator(
+                    notification,
+                    smtp_server=smtp_server,
+                    smtp_port=smtp_port,
+                    username=username,
+                    password=password,
+                    subject=subject,
+                )
+
+                parts = []
+                if horizontal_transition:
+                    parts.append("Horizontal head shake")
+                if vertical_transition:
+                    parts.append("Vertical head nod")
+                msg = f"{' & '.join(parts)} detected at {t:.3f}s (frame {state.frame_idx})"
+
+                if recipient:
+                    notification.send(msg, recipient)
+                else:
+                    print(f"[Email] Missing EMAIL_RECIPIENT; would send: {msg}")
+        except Exception as e:
+            print(f"Email notification error (head shake): {e}")
+
+        # Update previous states
+        state.prev_head_shake_horizontal = horizontal_shake_detected
+        state.prev_head_shake_vertical = vertical_nod_detected
+    else:
+        # Reset previous states when no head shake is detected
+        state.prev_head_shake_horizontal = False
+        state.prev_head_shake_vertical = False
 
     # Hand raise detection
     try:
@@ -610,6 +753,24 @@ def process_frame(
             # Blinking duration has passed, reset state
             state.blink_start_time = None
             state.blink_is_active = False
+
+    # Handle blinking color overlay when head shake is detected
+    if state.head_shake_blink_start_time is not None:
+        elapsed = t - state.head_shake_blink_start_time
+        if elapsed <= state.head_shake_blink_duration:
+            # Toggle blink state every 0.15 seconds (roughly 4-5 frames at 30fps)
+            time_since_last_toggle = t - state.head_shake_blink_last_toggle_time
+            if time_since_last_toggle >= 0.15:
+                state.head_shake_blink_is_active = not state.head_shake_blink_is_active
+                state.head_shake_blink_last_toggle_time = t
+
+            # Apply color overlay when blink is active
+            if state.head_shake_blink_is_active:
+                frame = draw_color_frame(frame, state.head_shake_blink_color, alpha=0.4)
+        else:
+            # Blinking duration has passed, reset state
+            state.head_shake_blink_start_time = None
+            state.head_shake_blink_is_active = False
 
     return frame, results, alerts, aux
 

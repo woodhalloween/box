@@ -3,7 +3,42 @@ import numpy as np
 
 # ⬇️ CHANGE THIS to the actual module containing `process_frame`
 # e.g., from src.processing.core import process_frame as fn
-from src.video_processor import process_frame as fn  # <-- adjust if needed
+from src.definitions import Angle, MovementState
+from src.video_processor import _normalize_head_shake_results  # <-- adjust if needed
+from src.video_processor import process_frame as fn
+
+
+def _apply_common_state_defaults(state) -> None:
+    """Populate attributes required by process_frame for blinking/head shake state."""
+
+    if not hasattr(state, "prev_hand_raised_left"):
+        state.prev_hand_raised_left = False
+    if not hasattr(state, "prev_hand_raised_right"):
+        state.prev_hand_raised_right = False
+    if not hasattr(state, "blink_start_time"):
+        state.blink_start_time = None
+    if not hasattr(state, "blink_is_active"):
+        state.blink_is_active = False
+    if not hasattr(state, "blink_color"):
+        state.blink_color = "255,0,0"
+    if not hasattr(state, "blink_duration"):
+        state.blink_duration = 3.0
+    if not hasattr(state, "blink_last_toggle_time"):
+        state.blink_last_toggle_time = 0.0
+    if not hasattr(state, "head_shake_blink_start_time"):
+        state.head_shake_blink_start_time = None
+    if not hasattr(state, "head_shake_blink_is_active"):
+        state.head_shake_blink_is_active = False
+    if not hasattr(state, "head_shake_blink_color"):
+        state.head_shake_blink_color = "255,0,0"
+    if not hasattr(state, "head_shake_blink_duration"):
+        state.head_shake_blink_duration = 3.0
+    if not hasattr(state, "head_shake_blink_last_toggle_time"):
+        state.head_shake_blink_last_toggle_time = 0.0
+    if not hasattr(state, "prev_head_shake_horizontal"):
+        state.prev_head_shake_horizontal = False
+    if not hasattr(state, "prev_head_shake_vertical"):
+        state.prev_head_shake_vertical = False
 
 
 class _PoseFake:
@@ -50,16 +85,20 @@ class _DwellFake:
 
 
 class _HeadShakeFake:
-    def __init__(self, update_dict, check_alerts_list):
-        self._update_dict = dict(update_dict)
+    def __init__(self, detect_dict, check_alerts_list):
+        self._detect_dict = dict(detect_dict)
         self._alerts = list(check_alerts_list)
+        self.detect_calls = 0
         self.update_calls = 0
         self.check_calls = 0
 
+    def detect(self, landmarks, t, frame_idx):
+        self.detect_calls += 1
+        return dict(self._detect_dict)
+
     def update(self, landmarks, t, frame_idx):
         self.update_calls += 1
-        # return dict to ensure results.update(...) is exercised
-        return dict(self._update_dict)
+        return _normalize_head_shake_results(self._detect_dict)
 
     def check_alerts(self, t):
         self.check_calls += 1
@@ -104,14 +143,7 @@ def _mk_state(
     s.last_landmarks = "UNTOUCHED"
     s.last_head_alerts = "UNTOUCHED"
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
     return s
 
 
@@ -192,7 +224,13 @@ def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
         analyzer_result={"knee": {"angle": 90.0}},
         posture_alerts=["POSTURE_BAD"],
         dwell_alert="DWELL_ALERT",
-        head_update_dict={"head_shake": {"score": 0.8}},
+        head_update_dict={
+            "horizontal_state": MovementState.HORIZONTAL_SHAKE,
+            "vertical_state": MovementState.HEAD_STATIC,
+            "horizontal_angle": 12.5,
+            "vertical_angle": -1.0,
+            "confidence": 0.9,
+        },
         head_alerts=["HEAD_ALERT_A", "HEAD_ALERT_B"],
         frame_idx=7,
         disable_jp=False,
@@ -202,8 +240,10 @@ def test_process_frame_full_path_with_dwell_and_head_alerts(monkeypatch):
     out_frame, results, alerts, aux = fn(frame_in, t=1.23, state=state)
 
     assert out_frame is frame_in
-    assert "knee" in results and "head_shake" in results
-    assert results["head_shake"]["score"] == 0.8
+    assert "knee" in results
+    assert Angle.HEAD_HORIZONTAL_ROTATION in results
+    assert Angle.HEAD_VERTICAL_NOD in results
+    assert results[Angle.HEAD_HORIZONTAL_ROTATION]["angle"] == 12.5
     assert alerts == ["POSTURE_BAD", "DWELL_ALERT", "HEAD_ALERT_A", "HEAD_ALERT_B"]
     assert aux["dwell_alert"] == "DWELL_ALERT"
     assert state.last_landmarks is landmarks
@@ -273,14 +313,7 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -331,14 +364,7 @@ def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -392,14 +418,7 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = None
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -450,14 +469,7 @@ def test_process_frame_hand_raise_detection_indexerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -510,14 +522,7 @@ def test_process_frame_hand_raise_detection_typeerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -568,14 +573,7 @@ def test_process_frame_hand_raise_detection_valueerror(monkeypatch, capsys):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -626,14 +624,7 @@ def test_process_frame_hand_raise_detection_unexpected_exception(monkeypatch, ca
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -684,14 +675,7 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    # Blinking state for hand raise detection
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -750,14 +734,7 @@ def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeyp
         s.last_landmarks = None
         s.last_head_alerts = []
         s.last_hand_statuses = "UNTOUCHED"
-        s.prev_hand_raised_left = False
-        s.prev_hand_raised_right = False
-        # Blinking state for hand raise detection
-        s.blink_start_time = None
-        s.blink_is_active = False
-        s.blink_color = "255,0,0"
-        s.blink_duration = 3.0
-        s.blink_last_toggle_time = 0.0
+        _apply_common_state_defaults(s)
 
         # Patch draw functions to pass-through
         monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -806,13 +783,8 @@ def test_process_frame_email_notification_right_hand_transition(monkeypatch, cap
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
+    _apply_common_state_defaults(s)
     s.prev_hand_raised_right = False  # Right transition will be True
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
 
     # Mock _load_email_config to return config with empty recipient (tests line 514)
     # Also mock EmailNotificationDecorator to avoid initialization issues
@@ -884,13 +856,9 @@ def test_process_frame_email_notification_both_hands_transition(monkeypatch, cap
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False  # Both transitions will be True
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
+    s.prev_hand_raised_left = False  # Both transitions will be True
+    s.prev_hand_raised_right = False
 
     # Mock _load_email_config to return config with empty recipient
     # Also mock EmailNotificationDecorator to avoid initialization issues
@@ -973,13 +941,7 @@ def test_process_frame_email_notification_with_recipient(monkeypatch):
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     mock_notification = MockNotification()
 
@@ -1047,13 +1009,7 @@ def test_process_frame_email_notification_exception_handling(monkeypatch, capsys
     s.last_landmarks = None
     s.last_head_alerts = []
     s.last_hand_statuses = "UNTOUCHED"
-    s.prev_hand_raised_left = False
-    s.prev_hand_raised_right = False
-    s.blink_start_time = None
-    s.blink_is_active = False
-    s.blink_color = "255,0,0"
-    s.blink_duration = 3.0
-    s.blink_last_toggle_time = 0.0
+    _apply_common_state_defaults(s)
 
     # Mock _load_email_config to raise an exception
     def mock_load_email_config_raises():
