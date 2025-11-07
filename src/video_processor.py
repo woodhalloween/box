@@ -451,6 +451,21 @@ def _normalize_head_shake_results(raw_result: Any) -> dict[Angle, dict[str, Any]
     if not raw_result:
         return {}
 
+    def _coerce_state(value: Any) -> MovementState:
+        """Best-effort conversion of mock or enum values into MovementState."""
+        if isinstance(value, MovementState):
+            return value
+        if isinstance(value, str):
+            # Accept both enum names (e.g., "HEAD_STATIC") and raw enum values.
+            try:
+                return MovementState[value]
+            except KeyError:
+                try:
+                    return MovementState(value)
+                except ValueError:
+                    pass
+        return MovementState.HEAD_STATIC
+
     if isinstance(raw_result, dict):
         # Already in the expected Angle-keyed format
         if any(isinstance(key, Angle) for key in raw_result):
@@ -467,12 +482,12 @@ def _normalize_head_shake_results(raw_result: Any) -> dict[Angle, dict[str, Any]
             return {
                 Angle.HEAD_HORIZONTAL_ROTATION: {
                     "angle": raw_result.get("horizontal_angle", 0.0),
-                    "state": raw_result.get("horizontal_state", MovementState.HEAD_STATIC),
+                    "state": _coerce_state(raw_result.get("horizontal_state")),
                     "confidence": raw_result.get("confidence", 0.0),
                 },
                 Angle.HEAD_VERTICAL_NOD: {
                     "angle": raw_result.get("vertical_angle", 0.0),
-                    "state": raw_result.get("vertical_state", MovementState.HEAD_STATIC),
+                    "state": _coerce_state(raw_result.get("vertical_state")),
                     "confidence": raw_result.get("confidence", 0.0),
                 },
             }
