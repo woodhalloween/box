@@ -35,7 +35,13 @@ class VideoLabelingTool:
             raise ValueError(f"動画ファイルを開けません: {video_path}")
 
         # 動画情報取得
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        raw_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self._fps_fallback_used = False
+        if not raw_fps or raw_fps <= 0:
+            self._fps_fallback_used = True
+            raw_fps = 30.0
+        self.fps = raw_fps
+        self._seconds_per_frame = 1.0 / self.fps
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -51,10 +57,17 @@ class VideoLabelingTool:
 
         print("=== 動画情報 ===")
         print(f"ファイル: {video_path}")
-        print(f"FPS: {self.fps:.2f}")
+        fps_display = f"{self.fps:.2f}"
+        if self._fps_fallback_used:
+            fps_display += " (fallback)"
+        print(f"FPS: {fps_display}")
         print(f"総フレーム数: {self.total_frames}")
         print(f"解像度: {self.width}x{self.height}")
-        print(f"総時間: {self._format_time(self.total_frames / self.fps)}")
+        print(f"総時間: {self._format_time(self.total_frames * self._seconds_per_frame)}")
+        if self._fps_fallback_used:
+            print(
+                "⚠️  FPSを取得できなかったため、仮の値 (30 FPS) を使用しています。時間表示が正確でない場合があります。"
+            )
         print()
         print("=== 操作方法 ===")
         print("1: 首振りイベントの開始/終了をトグル")
@@ -76,7 +89,7 @@ class VideoLabelingTool:
 
     def _get_current_time(self):
         """現在のフレームの時刻を取得"""
-        return self.current_frame / self.fps
+        return self.current_frame * self._seconds_per_frame
 
     def _draw_info(self, frame):
         """フレームに情報を描画"""
@@ -99,7 +112,7 @@ class VideoLabelingTool:
 
         # 記録状態
         if self.recording_head_shake:
-            start_time = self.head_shake_start_frame / self.fps
+            start_time = self.head_shake_start_frame * self._seconds_per_frame
             duration = current_time - start_time
             cv2.putText(frame, f"[REC] HEAD SHAKE - Duration: {duration:.2f}s", (20, 130), font, 0.8, (0, 0, 255), 2)
         else:
@@ -121,8 +134,8 @@ class VideoLabelingTool:
             # 記録終了
             self.recording_head_shake = False
             end_frame = self.current_frame
-            start_time = self.head_shake_start_frame / self.fps
-            end_time = end_frame / self.fps
+            start_time = self.head_shake_start_frame * self._seconds_per_frame
+            end_time = end_frame * self._seconds_per_frame
 
             # ラベルを保存
             label = {
