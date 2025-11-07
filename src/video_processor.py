@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -267,10 +268,11 @@ class VideoProcessor:
         detect_fn = getattr(self.head_shake_detector, "detect", None)
         if callable(detect_fn):
             try:
-                raw_head_shake = detect_fn(landmarks, timestamp, frame_count)
-            except TypeError:
-                raw_head_shake = detect_fn(landmarks, timestamp)
-            head_shake_results = _normalize_head_shake_results(raw_head_shake)
+                raw_head_shake = _call_head_shake_detect(detect_fn, landmarks, timestamp, frame_count)
+            except TypeError as exc:
+                print(f"Warning: Head shake detection failed: {exc}")
+            else:
+                head_shake_results = _normalize_head_shake_results(raw_head_shake)
 
         if not head_shake_results:
             update_fn = getattr(self.head_shake_detector, "update", None)
@@ -496,6 +498,50 @@ def _normalize_head_shake_results(raw_result: Any) -> dict[Angle, dict[str, Any]
         return raw_result  # type: ignore[return-value]
 
     return {}
+
+
+def _call_head_shake_detect(
+    detect_fn: Any,
+    landmarks: np.ndarray | None,
+    timestamp: float,
+    frame_count: int,
+) -> Any:
+    """
+    Invoke head shake detection with the best-effort signature compatibility.
+
+    Prefers to respect the callable's declared positional arity while supporting
+    legacy detectors that only accept two positional arguments.
+    """
+
+    args = (landmarks, timestamp, frame_count)
+
+    try:
+        signature = inspect.signature(detect_fn)
+    except (TypeError, ValueError):
+        # Builtins or callables without inspectable signatures: fall back to full args.
+        return detect_fn(*args)
+
+    params = [
+        p
+        for p in signature.parameters.values()
+        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+
+    # Handle unbound functions where `self` might still be present in the signature.
+    if params and params[0].name == "self" and getattr(detect_fn, "__self__", None) is None:
+        params = params[1:]
+
+    if any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in signature.parameters.values()):
+        return detect_fn(*args)
+
+    required_params = [p for p in params if p.default is inspect.Parameter.empty]
+
+    if len(required_params) > len(args):
+        # Cannot satisfy the callable's contract; allow the callable to raise a helpful error.
+        return detect_fn(*args)
+
+    positional_args_to_pass = args[: min(len(args), len(params))]
+    return detect_fn(*positional_args_to_pass)
 
 
 def process_frame(
