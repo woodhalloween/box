@@ -61,6 +61,7 @@ class PipelineState:
     last_hand_statuses: dict[str, bool] | None = None
     prev_hand_raised_left: bool = False
     prev_hand_raised_right: bool = False
+    sway_params: dict[str, float | int | bool] | None = None
 
 
 class VideoProcessor:
@@ -703,6 +704,17 @@ def process_video(
     # Hand raise
     hand_raise_visibility_threshold: float = 0.5,
     hand_raise_min_consecutive_frames: int = 5,
+    # Torso sway parameters (optional; currently stored for downstream use)
+    sway_window_sec: float = 8.0,
+    sway_smooth_sec: float = 0.5,
+    sway_amp_th_lat: float = 10.0,
+    sway_amp_th_ap: float = 8.0,
+    sway_f_min: float = 0.2,
+    sway_f_max: float = 1.5,
+    sway_min_cycles: int = 3,
+    sway_on_sec: float = 1.2,
+    sway_off_sec: float = 0.7,
+    sway_use_staying_gate: bool = False,
     # 新：FFmpeg切替のためのヒント（省略時は自動推定）
     input_mode: str | None = None,  # "ffmpeg-file" | "ffmpeg-camera"
     width: int = 1280,
@@ -759,6 +771,18 @@ def process_video(
         hand_raise_detector=hand_raise_detector,
         posture_monitor=posture,
         disable_jp=disable_japanese,
+        sway_params={
+            "sway_window_sec": float(sway_window_sec),
+            "sway_smooth_sec": float(sway_smooth_sec),
+            "sway_amp_th_lat": float(sway_amp_th_lat),
+            "sway_amp_th_ap": float(sway_amp_th_ap),
+            "sway_f_min": float(sway_f_min),
+            "sway_f_max": float(sway_f_max),
+            "sway_min_cycles": int(sway_min_cycles),
+            "sway_on_sec": float(sway_on_sec),
+            "sway_off_sec": float(sway_off_sec),
+            "sway_use_staying_gate": bool(sway_use_staying_gate),
+        },
     )
 
     # 2) CSV/Video sinks（既存の setup_* を利用）
