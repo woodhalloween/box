@@ -158,6 +158,77 @@ def draw_torso_indicators(image: np.ndarray, landmarks: np.ndarray, confidence_t
     return image
 
 
+def draw_color_frame(frame: np.ndarray, color_str: str, alpha: float = 0.3, border_width: int = 30) -> np.ndarray:
+    """
+    Overlay a semi-transparent color on the outer border of the frame.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        Input frame (BGR format).
+    color_str : str
+        RGB color as string. Supports formats:
+        - "R,G,B" (e.g., "255,0,0" for red)
+        - "#RRGGBB" (e.g., "#FF0000" for red)
+    alpha : float, default=0.3
+        Transparency level (0.0 = fully transparent, 1.0 = fully opaque).
+    border_width : int, default=30
+        Width of the border from each edge in pixels.
+
+    Returns
+    -------
+    np.ndarray
+        Frame with color overlay applied to the border.
+    """
+    # Parse color string to BGR tuple (OpenCV uses BGR, not RGB)
+    try:
+        if color_str.startswith("#"):
+            # Hex format: #RRGGBB
+            hex_color = color_str.lstrip("#")
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+        else:
+            # Comma-separated format: R,G,B
+            parts = color_str.split(",")
+            r = int(parts[0].strip())
+            g = int(parts[1].strip())
+            b = int(parts[2].strip())
+        # Convert RGB to BGR for OpenCV
+        color_bgr = (b, g, r)
+    except (ValueError, IndexError) as e:
+        # Fallback to red if parsing fails
+        print(f"Warning: Could not parse color '{color_str}': {e}. Using red (255,0,0).")
+        color_bgr = (0, 0, 255)  # Red in BGR
+
+    h, w = frame.shape[:2]
+
+    # Create a mask for the border region only
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    # Draw border rectangles: top, bottom, left, right
+    # Top border
+    cv2.rectangle(mask, (0, 0), (w, border_width), 255, -1)
+    # Bottom border
+    cv2.rectangle(mask, (0, h - border_width), (w, h), 255, -1)
+    # Left border (excluding corners already drawn)
+    cv2.rectangle(mask, (0, border_width), (border_width, h - border_width), 255, -1)
+    # Right border (excluding corners already drawn)
+    cv2.rectangle(mask, (w - border_width, border_width), (w, h - border_width), 255, -1)
+
+    # Create overlay with the border color
+    overlay = frame.copy()
+    # Apply color only to border regions
+    overlay[mask > 0] = color_bgr
+
+    # Blend the overlay with the frame only where mask is active
+    result = frame.copy()
+    mask_3d = np.stack([mask] * 3, axis=2) / 255.0  # Convert to 3-channel float mask
+    result = result * (1.0 - mask_3d * alpha) + overlay * (mask_3d * alpha)
+
+    return result.astype(np.uint8)
+
+
 def draw_analysis_results(
     image: np.ndarray,
     results: dict[Angle, dict[str, Any]],
