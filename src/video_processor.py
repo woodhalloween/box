@@ -955,7 +955,7 @@ def process_video(
     )
     head = HeadShakeDetector(
         horizontal_threshold=15.0,
-        vertical_threshold=60.0,
+        vertical_threshold=10.0,
         cycle_detection_window=10,
         min_oscillations=1,
         confidence_threshold=0.5,

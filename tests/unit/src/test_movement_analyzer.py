@@ -274,8 +274,8 @@ def test_body_tilt_angle_nan_returns_unknown_state():
     assert results[Angle.BODY_TILT]["state"] == MovementState.UNKNOWN
 
 
-def test_neck_trunk_angle_nan_returns_unknown_state():
-    """When neck_trunk_angle is NaN (due to coincident hip and shoulder midpoints), state should be UNKNOWN."""
+def test_neck_trunk_angle_nan_skips_result():
+    """When neck_trunk_angle is NaN, the result should be skipped for consistency."""
     analyzer = MovementAnalyzer(confidence_threshold=0.7)
     lm = _make_base_landmarks(conf=1.0)
 
@@ -292,7 +292,5 @@ def test_neck_trunk_angle_nan_returns_unknown_state():
 
     results = analyzer.analyze(lm)
 
-    # Neck trunk angle should be NaN, and state should be UNKNOWN
-    assert Angle.NECK_TRUNK_ANGLE in results
-    assert np.isnan(results[Angle.NECK_TRUNK_ANGLE]["angle"])
-    assert results[Angle.NECK_TRUNK_ANGLE]["state"] == MovementState.UNKNOWN
+    # Neck trunk angle result should be skipped entirely when the angle is NaN
+    assert Angle.NECK_TRUNK_ANGLE not in results

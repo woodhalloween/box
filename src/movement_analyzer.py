@@ -167,13 +167,11 @@ class MovementAnalyzer:
                 if neck_trunk_angle <= 150  # 150度以下なら猫背とみなす
                 else MovementState.STRAIGHT
             )
-        else:
-            neck_state = MovementState.UNKNOWN
 
-        analysis_results[Angle.NECK_TRUNK_ANGLE] = {
-            "angle": neck_trunk_angle,
-            "state": neck_state,
-        }
+            analysis_results[Angle.NECK_TRUNK_ANGLE] = {
+                "angle": neck_trunk_angle,
+                "state": neck_state,
+            }
         # --- ここまで ---
 
         # --- 側屈（LATERAL_TILT）計算 ---
