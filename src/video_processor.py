@@ -310,7 +310,7 @@ class VideoProcessor:
         # MediaPipe Face Mesh 頭部方向検知（オプション）
         if self.mediapipe_head_turn_detector is not None:
             try:
-                # mp_result = self.mediapipe_head_turn_detector.detect(frame, timestamp)
+                self.mediapipe_head_turn_detector.detect(frame, timestamp)
                 sustained_turn = self.mediapipe_head_turn_detector.check_sustained_turn(timestamp)
                 if sustained_turn:
                     print(
