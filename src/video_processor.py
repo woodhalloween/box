@@ -34,7 +34,7 @@ from .analysis.user_classifier import UserClassifier
 from .detectors.hand_raise_refactored import HandRaiseDetector
 from .head_shake_detector import HeadShakeDetector
 from .io.csv_writer import setup_csv_writer, write_results_to_csv
-from .io.drawing import draw_analysis_results, draw_detection_info, draw_landmarks
+from .io.drawing import draw_analysis_results, draw_color_frame, draw_detection_info, draw_landmarks
 from .io_utils import setup_video_writer
 from .movement_analyzer import MovementAnalyzer
 from .notifiers.base_notification import BasicNotification
@@ -60,6 +60,12 @@ class PipelineState:
     last_hand_statuses: dict[str, bool] | None = None
     prev_hand_raised_left: bool = False
     prev_hand_raised_right: bool = False
+    # Blinking state for hand raise detection
+    blink_start_time: float | None = None
+    blink_is_active: bool = False
+    blink_color: str = "255,0,0"  # Default red color (RGB string)
+    blink_duration: float = 3.0  # Default 3 seconds
+    blink_last_toggle_time: float = 0.0  # Track when to toggle blink on/off
 
 
 class VideoProcessor:
@@ -469,6 +475,10 @@ def process_frame(
                 f"🙌 Hand(s) raised detected: "
                 f"hand_left_raised={left_raised}, hand_right_raised={right_raised}"
             )
+            # Start blinking effect
+            state.blink_start_time = t
+            state.blink_is_active = True
+            state.blink_last_toggle_time = t
 
         # Email notification on False->True transitions (only once per transition)
         try:
@@ -526,6 +536,25 @@ def process_frame(
         landmarks,
         t,
     )
+
+    # Handle blinking color overlay when hand is raised
+    if state.blink_start_time is not None:
+        elapsed = t - state.blink_start_time
+        if elapsed <= state.blink_duration:
+            # Toggle blink state every 0.15 seconds (roughly 4-5 frames at 30fps)
+            time_since_last_toggle = t - state.blink_last_toggle_time
+            if time_since_last_toggle >= 0.15:
+                state.blink_is_active = not state.blink_is_active
+                state.blink_last_toggle_time = t
+
+            # Apply color overlay when blink is active
+            if state.blink_is_active:
+                frame = draw_color_frame(frame, state.blink_color, alpha=0.4)
+        else:
+            # Blinking duration has passed, reset state
+            state.blink_start_time = None
+            state.blink_is_active = False
+
     return frame, results, alerts, aux
 
 

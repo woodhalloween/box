@@ -106,6 +106,12 @@ def _mk_state(
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
     return s
 
 
@@ -269,6 +275,12 @@ def test_process_frame_posture_alerts_appended_and_called_with_args(monkeypatch)
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -321,6 +333,12 @@ def test_process_frame_user_classifier_with_update_returns_alerts(monkeypatch):
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -376,6 +394,12 @@ def test_process_frame_user_classifier_with_update_returns_none(monkeypatch):
     s.last_hand_statuses = None
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -428,6 +452,12 @@ def test_process_frame_hand_raise_detection_indexerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -482,6 +512,12 @@ def test_process_frame_hand_raise_detection_typeerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -534,6 +570,12 @@ def test_process_frame_hand_raise_detection_valueerror(monkeypatch, capsys):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -586,6 +628,12 @@ def test_process_frame_hand_raise_detection_unexpected_exception(monkeypatch, ca
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -638,6 +686,12 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
     s.last_hand_statuses = "UNTOUCHED"
     s.prev_hand_raised_left = False
     s.prev_hand_raised_right = False
+    # Blinking state for hand raise detection
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
 
     # Patch draw functions to pass-through
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -646,6 +700,7 @@ def test_process_frame_hand_raise_detection_success(monkeypatch):
         lambda f, r, hand_statuses, lm, disable_japanese: f,
     )
     monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
 
     frame = np.zeros((10, 10, 3), dtype=np.uint8)
     out_frame, results, alerts, aux = fn(frame, t=1.0, state=s)
@@ -697,6 +752,12 @@ def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeyp
         s.last_hand_statuses = "UNTOUCHED"
         s.prev_hand_raised_left = False
         s.prev_hand_raised_right = False
+        # Blinking state for hand raise detection
+        s.blink_start_time = None
+        s.blink_is_active = False
+        s.blink_color = "255,0,0"
+        s.blink_duration = 3.0
+        s.blink_last_toggle_time = 0.0
 
         # Patch draw functions to pass-through
         monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
@@ -716,3 +777,450 @@ def test_process_frame_hand_raise_detection_multiple_exceptions_coverage(monkeyp
         # Verify state was updated correctly
         assert s.last_hand_statuses is None
         assert out_frame is frame
+
+
+def test_process_frame_email_notification_right_hand_transition(monkeypatch, capsys):
+    """
+    Test lines 507-508: Email notification when right hand transition is detected.
+    When right_transition is True, "Right hand raised" should be added to parts.
+    """
+    expected_hand_statuses = {"left_hand_raised": False, "right_hand_raised": True}
+
+    class HandRaiseDetectorRightHand:
+        def detect(self, landmarks):
+            return expected_hand_statuses
+
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorRightHand()
+    s.user_classifier = object()
+    s.frame_idx = 5
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False  # Right transition will be True
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
+
+    # Mock _load_email_config to return config with empty recipient (tests line 514)
+    # Also mock EmailNotificationDecorator to avoid initialization issues
+    monkeypatch.setattr(
+        "src.video_processor._load_email_config",
+        lambda: {
+            "username": "test@example.com",
+            "password": "password",
+            "smtp_server": "smtp.example.com",
+            "smtp_port": "587",
+            "subject": "Test",
+            "recipient": None,  # No recipient - should print message instead of sending
+        },
+    )
+
+    # Mock EmailNotificationDecorator to return a simple mock
+    class MockEmailDecorator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send(self, msg, recipient):
+            pass
+
+    monkeypatch.setattr("src.video_processor.EmailNotificationDecorator", MockEmailDecorator)
+
+    # Patch draw functions
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=2.0, state=s)
+
+    # Verify right hand transition triggered email notification message
+    captured = capsys.readouterr()
+    assert "Right hand raised at 2.000s" in captured.out
+    assert s.last_hand_statuses == expected_hand_statuses
+    assert s.prev_hand_raised_right is True
+
+
+def test_process_frame_email_notification_both_hands_transition(monkeypatch, capsys):
+    """
+    Test lines 507-508: Email notification when both hands transition is detected.
+    When both left_transition and right_transition are True, both parts should be added.
+    """
+    expected_hand_statuses = {"left_hand_raised": True, "right_hand_raised": True}
+
+    class HandRaiseDetectorBothHands:
+        def detect(self, landmarks):
+            return expected_hand_statuses
+
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorBothHands()
+    s.user_classifier = object()
+    s.frame_idx = 10
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False  # Both transitions will be True
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
+
+    # Mock _load_email_config to return config with empty recipient
+    # Also mock EmailNotificationDecorator to avoid initialization issues
+    monkeypatch.setattr(
+        "src.video_processor._load_email_config",
+        lambda: {
+            "username": "test@example.com",
+            "password": "password",
+            "smtp_server": "smtp.example.com",
+            "smtp_port": "587",
+            "subject": "Test",
+            "recipient": None,  # No recipient - should print message instead of sending
+        },
+    )
+
+    # Mock EmailNotificationDecorator to return a simple mock
+    class MockEmailDecorator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send(self, msg, recipient):
+            pass
+
+    monkeypatch.setattr("src.video_processor.EmailNotificationDecorator", MockEmailDecorator)
+
+    # Patch draw functions
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=3.0, state=s)
+
+    # Verify both hands transition triggered email notification message
+    captured = capsys.readouterr()
+    assert "Left hand raised" in captured.out
+    assert "Right hand raised" in captured.out
+    assert (
+        "Left hand raised & Right hand raised" in captured.out or "Right hand raised & Left hand raised" in captured.out
+    )
+    assert s.prev_hand_raised_left is True
+    assert s.prev_hand_raised_right is True
+
+
+def test_process_frame_email_notification_with_recipient(monkeypatch):
+    """
+    Test lines 511-512: Email notification when recipient exists.
+    When recipient is set, notification.send should be called.
+    """
+    expected_hand_statuses = {"left_hand_raised": True, "right_hand_raised": False}
+
+    class HandRaiseDetectorWithRecipient:
+        def detect(self, landmarks):
+            return expected_hand_statuses
+
+    class MockNotification:
+        def __init__(self):
+            self.send_calls = []
+
+        def send(self, msg, recipient):
+            self.send_calls.append((msg, recipient))
+
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithRecipient()
+    s.user_classifier = object()
+    s.frame_idx = 7
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
+
+    mock_notification = MockNotification()
+
+    # Mock _load_email_config to return a recipient
+    monkeypatch.setattr(
+        "src.video_processor._load_email_config",
+        lambda: {
+            "username": "test@example.com",
+            "password": "password",
+            "smtp_server": "smtp.example.com",
+            "smtp_port": "587",
+            "subject": "Test",
+            "recipient": "recipient@example.com",
+        },
+    )
+
+    # Mock EmailNotificationDecorator to return our mock
+    def mock_email_decorator(notification, **kwargs):
+        return mock_notification
+
+    monkeypatch.setattr("src.video_processor.EmailNotificationDecorator", mock_email_decorator)
+
+    # Patch draw functions
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=4.0, state=s)
+
+    # Verify notification.send was called with correct arguments
+    assert len(mock_notification.send_calls) == 1
+    assert mock_notification.send_calls[0][0] == "Left hand raised at 4.000s (frame 7)"
+    assert mock_notification.send_calls[0][1] == "recipient@example.com"
+
+
+def test_process_frame_email_notification_exception_handling(monkeypatch, capsys):
+    """
+    Test lines 515-516: Exception handling in email notification.
+    When email notification raises an exception, it should be caught and printed.
+    """
+    expected_hand_statuses = {"left_hand_raised": True, "right_hand_raised": False}
+
+    class HandRaiseDetectorWithException:
+        def detect(self, landmarks):
+            return expected_hand_statuses
+
+    class State:
+        pass
+
+    s = State()
+    s.pose = _PoseFake(landmarks=np.zeros((33, 4)))
+    s.analyzer = _AnalyzerFake({})
+    s.posture_monitor = _PostureMonitorFake([])
+    s.dwell_time_detector = _DwellFake(None)
+    s.head_shake_detector = _HeadShakeFake({}, [])
+    s.hand_raise_detector = HandRaiseDetectorWithException()
+    s.user_classifier = object()
+    s.frame_idx = 8
+    s.disable_jp = True
+    s.last_landmarks = None
+    s.last_head_alerts = []
+    s.last_hand_statuses = "UNTOUCHED"
+    s.prev_hand_raised_left = False
+    s.prev_hand_raised_right = False
+    s.blink_start_time = None
+    s.blink_is_active = False
+    s.blink_color = "255,0,0"
+    s.blink_duration = 3.0
+    s.blink_last_toggle_time = 0.0
+
+    # Mock _load_email_config to raise an exception
+    def mock_load_email_config_raises():
+        raise ValueError("Config file error")
+
+    monkeypatch.setattr("src.video_processor._load_email_config", mock_load_email_config_raises)
+
+    # Patch draw functions
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", lambda f, *a, **k: f)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=5.0, state=s)
+
+    # Verify exception was caught and error message was printed
+    captured = capsys.readouterr()
+    assert "Email notification error: Config file error" in captured.out
+    # Function should complete successfully despite the exception
+    assert out_frame is frame
+
+
+def test_process_frame_blink_toggle_logic(monkeypatch):
+    """
+    Test lines 546-548: Blink toggle logic when time_since_last_toggle >= 0.15.
+    When enough time has passed, blink_is_active should toggle and blink_last_toggle_time should update.
+    """
+    landmarks = np.zeros((33, 4))
+    state = _mk_state(
+        landmarks=landmarks,
+        analyzer_result={},
+        posture_alerts=[],
+        dwell_alert=None,
+        head_update_dict={},
+        head_alerts=[],
+        frame_idx=0,
+    )
+
+    # Set up blinking state - already started, needs to toggle
+    state.blink_start_time = 1.0  # Started at t=1.0
+    state.blink_is_active = True
+    state.blink_last_toggle_time = 1.0  # Last toggle at t=1.0
+    state.prev_hand_raised_left = False
+    state.prev_hand_raised_right = False
+
+    # Mock draw_color_frame to track calls
+    draw_calls = []
+
+    def mock_draw_color_frame(frame, color, alpha=0.4):
+        draw_calls.append((color, alpha))
+        return frame
+
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", mock_draw_color_frame)
+
+    # Call at t=1.16 (0.16 seconds after last toggle, >= 0.15)
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.16, state=state)
+
+    # Verify blink state was toggled
+    assert state.blink_is_active is False  # Should toggle from True to False
+    assert state.blink_last_toggle_time == 1.16
+    # Since blink_is_active is now False, draw_color_frame should not be called
+    assert len(draw_calls) == 0
+
+
+def test_process_frame_blink_toggle_active_calls_draw(monkeypatch):
+    """
+    Test lines 546-548 and 551-552: When blink is active after toggle, draw_color_frame should be called.
+    """
+    landmarks = np.zeros((33, 4))
+    state = _mk_state(
+        landmarks=landmarks,
+        analyzer_result={},
+        posture_alerts=[],
+        dwell_alert=None,
+        head_update_dict={},
+        head_alerts=[],
+        frame_idx=0,
+    )
+
+    # Set up blinking state - will toggle to True
+    state.blink_start_time = 1.0
+    state.blink_is_active = False  # Will toggle to True
+    state.blink_last_toggle_time = 1.0
+    state.prev_hand_raised_left = False
+    state.prev_hand_raised_right = False
+
+    draw_calls = []
+
+    def mock_draw_color_frame(frame, color, alpha=0.4):
+        draw_calls.append((color, alpha))
+        return frame
+
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", mock_draw_color_frame)
+
+    # Call at t=1.16 (0.16 seconds after last toggle)
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=1.16, state=state)
+
+    # Verify blink state was toggled to True
+    assert state.blink_is_active is True
+    assert state.blink_last_toggle_time == 1.16
+    # Since blink_is_active is now True, draw_color_frame should be called
+    assert len(draw_calls) == 1
+    assert draw_calls[0] == (state.blink_color, 0.4)
+
+
+def test_process_frame_blink_duration_expired(monkeypatch):
+    """
+    Test lines 553-556: Blinking duration expiration.
+    When elapsed > blink_duration, blink_start_time and blink_is_active should be reset.
+    """
+    landmarks = np.zeros((33, 4))
+    state = _mk_state(
+        landmarks=landmarks,
+        analyzer_result={},
+        posture_alerts=[],
+        dwell_alert=None,
+        head_update_dict={},
+        head_alerts=[],
+        frame_idx=0,
+    )
+
+    # Set up blinking state that has expired
+    state.blink_start_time = 1.0  # Started at t=1.0
+    state.blink_is_active = True
+    state.blink_last_toggle_time = 1.0
+    state.blink_duration = 3.0  # Duration is 3 seconds
+    state.prev_hand_raised_left = False
+    state.prev_hand_raised_right = False
+
+    draw_calls = []
+
+    def mock_draw_color_frame(frame, color, alpha=0.4):
+        draw_calls.append((color, alpha))
+        return frame
+
+    monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
+    monkeypatch.setattr(
+        "src.video_processor.draw_analysis_results",
+        lambda f, r, hand_statuses, lm, disable_japanese: f,
+    )
+    monkeypatch.setattr("src.video_processor.draw_detection_info", lambda f, *a, **k: f)
+    monkeypatch.setattr("src.video_processor.draw_color_frame", mock_draw_color_frame)
+
+    # Call at t=5.0 (4.0 seconds after start, > 3.0 duration)
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    out_frame, results, alerts, aux = fn(frame, t=5.0, state=state)
+
+    # Verify blinking state was reset
+    assert state.blink_start_time is None
+    assert state.blink_is_active is False
+    # draw_color_frame should not be called since blink is inactive
+    assert len(draw_calls) == 0
