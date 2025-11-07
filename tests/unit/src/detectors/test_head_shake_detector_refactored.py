@@ -391,6 +391,72 @@ class TestHeadShakeDetectorUpdate:
         assert result[Angle.HEAD_VERTICAL_NOD]["state"] == MovementState.HEAD_STATIC
 
 
+# ==================== HeadShakeDetector.check_alerts() Tests ====================
+
+
+class TestHeadShakeDetectorCheckAlerts:
+    """Test cases for HeadShakeDetector.check_alerts() method."""
+
+    def test_check_alerts_no_alerts_when_static(self, detector):
+        """No alerts should be emitted when both states are static."""
+        detector.reset()
+        alerts = detector.check_alerts(timestamp=10.0)
+        assert alerts == []
+
+    def test_check_alerts_horizontal_alert_triggered(self, detector):
+        """Horizontal alert should trigger when cooldown elapsed and state matches."""
+        detector._current_horizontal_state = MovementState.HORIZONTAL_SHAKE
+        detector.last_horizontal_alert_time = 0.0
+        detector.alert_cooldown = 1.0
+
+        alerts = detector.check_alerts(timestamp=2.5)
+
+        assert alerts == ["[!] Horizontal Head Shake Detected"]
+        assert detector.last_horizontal_alert_time == pytest.approx(2.5)
+
+    def test_check_alerts_vertical_alert_triggered(self, detector):
+        """Vertical alert should trigger when cooldown elapsed and state matches."""
+        detector._current_vertical_state = MovementState.VERTICAL_NOD
+        detector.last_vertical_alert_time = 0.0
+        detector.alert_cooldown = 0.5
+
+        alerts = detector.check_alerts(timestamp=1.0)
+
+        assert alerts == ["[!] Vertical Head Nod Detected"]
+        assert detector.last_vertical_alert_time == pytest.approx(1.0)
+
+    def test_check_alerts_both_alerts_triggered(self, detector):
+        """Both alerts should trigger and be returned in insertion order."""
+        detector._current_horizontal_state = MovementState.HORIZONTAL_SHAKE
+        detector._current_vertical_state = MovementState.VERTICAL_NOD
+        detector.last_horizontal_alert_time = 1.0
+        detector.last_vertical_alert_time = 1.0
+        detector.alert_cooldown = 0.5
+
+        alerts = detector.check_alerts(timestamp=2.0)
+
+        assert alerts == [
+            "[!] Horizontal Head Shake Detected",
+            "[!] Vertical Head Nod Detected",
+        ]
+        assert detector.last_horizontal_alert_time == pytest.approx(2.0)
+        assert detector.last_vertical_alert_time == pytest.approx(2.0)
+
+    def test_check_alerts_respects_cooldown(self, detector):
+        """Alerts should not trigger when cooldown has not elapsed."""
+        detector._current_horizontal_state = MovementState.HORIZONTAL_SHAKE
+        detector._current_vertical_state = MovementState.VERTICAL_NOD
+        detector.last_horizontal_alert_time = 5.0
+        detector.last_vertical_alert_time = 5.0
+        detector.alert_cooldown = 2.0
+
+        alerts = detector.check_alerts(timestamp=6.5)
+
+        assert alerts == []
+        assert detector.last_horizontal_alert_time == 5.0
+        assert detector.last_vertical_alert_time == 5.0
+
+
 # ==================== HeadShakeDetector.get_status() Tests ====================
 
 
