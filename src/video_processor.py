@@ -586,14 +586,24 @@ def process_frame(
     # Head shake
     head_shake_results: dict[Angle, dict[str, Any]] = {}
     detect_fn = getattr(state.head_shake_detector, "detect", None)
+    fallback_to_update = True
     if callable(detect_fn):
         try:
-            raw_head_shake = detect_fn(landmarks, t, state.frame_idx)
+            raw_head_shake = _call_head_shake_detect(detect_fn, landmarks, t, state.frame_idx)
         except TypeError:
-            raw_head_shake = detect_fn(landmarks, t)
-        head_shake_results = _normalize_head_shake_results(raw_head_shake)
+            # Legacy detectors that only accept (landmarks, timestamp) should still be honored.
+            try:
+                raw_head_shake = detect_fn(landmarks, t)
+            except TypeError:
+                pass
+            else:
+                fallback_to_update = False
+                head_shake_results = _normalize_head_shake_results(raw_head_shake)
+        else:
+            fallback_to_update = False
+            head_shake_results = _normalize_head_shake_results(raw_head_shake)
 
-    if not head_shake_results:
+    if fallback_to_update and not head_shake_results:
         update_fn = getattr(state.head_shake_detector, "update", None)
         if callable(update_fn):
             head_shake_results = update_fn(landmarks, t, state.frame_idx)

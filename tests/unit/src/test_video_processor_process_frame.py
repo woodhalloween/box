@@ -265,7 +265,7 @@ def test_process_frame_normalizes_head_shake_and_collects_alerts(monkeypatch):
     assert "[!] Horizontal Head Shake Detected" in debug_writer.rows[0]["head_shake_alerts"]
 
 
-def test_process_frame_uses_update_when_detect_returns_empty_and_handles_no_alerts(monkeypatch):
+def test_process_frame_uses_update_when_detect_missing_and_handles_no_alerts(monkeypatch):
     from src import video_processor as vp_module
 
     frame = np.zeros((6, 6, 3), dtype=np.uint8)
@@ -309,7 +309,6 @@ def test_process_frame_uses_update_when_detect_returns_empty_and_handles_no_aler
     )
 
     head_shake_detector = SimpleNamespace(
-        detect=lambda *a, **k: {},
         update=lambda *a, **k: {
             Angle.HEAD_HORIZONTAL_ROTATION: {
                 "angle": 3.0,
@@ -461,7 +460,7 @@ def test_process_frame_ignores_non_dict_head_shake_results(monkeypatch):
     assert alerts == []
     assert aux == {"dwell_alert": None}
     assert state.head_shake_detector.detect_calls == 1
-    assert state.head_shake_detector.update_calls == 1
+    assert state.head_shake_detector.update_calls == 0
 
 
 def test_process_frame_head_alert_missing_recipient_prints_message(monkeypatch, capsys):
