@@ -395,3 +395,5 @@ def draw_analysis_results(image, results, hand_statuses, landmarks, fps=0.0, ...
 
 
 
+
+

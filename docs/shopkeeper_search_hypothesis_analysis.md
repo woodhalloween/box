@@ -370,3 +370,5 @@ class ShopkeeperSearchDetector(PostureAndMotionDetectorBase):
 
 
 
+
+
