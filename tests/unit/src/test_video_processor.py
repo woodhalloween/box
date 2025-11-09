@@ -148,6 +148,14 @@ class TestVideoProcessor(unittest.TestCase):
         mock_hand_raise_detector_instance = mock_hand_raise_detector.return_value
         mock_hand_raise_detector_instance.detect.return_value = {"left_hand_raised": True, "right_hand_raised": False}
 
+        mock_head_shake_detector.return_value.detect.return_value = {
+            "horizontal_state": "HEAD_STATIC",
+            "vertical_state": "HEAD_STATIC",
+            "horizontal_angle": 0.0,
+            "vertical_angle": 0.0,
+            "confidence": 1.0,
+        }
+
         # Act
         with VideoProcessor(
             video_path="dummy.mp4",
@@ -178,7 +186,7 @@ class TestVideoProcessor(unittest.TestCase):
         mock_user_classifier.return_value.update.assert_called_once()
         mock_dwell_time_detector.return_value.update.assert_called_once()
         mock_posture_monitor.return_value.update.assert_called_once()
-        mock_head_shake_detector.return_value.update.assert_called_once()
+        mock_head_shake_detector.return_value.detect.assert_called_once()
         mock_head_shake_detector.return_value.check_alerts.assert_called_once()
         mock_hand_raise_detector_instance.detect.assert_called_once_with("dummy_landmarks")
 
@@ -312,7 +320,18 @@ def test__process_frame_prints_notification_when_conditions_met(monkeypatch, cap
 
     # Other modules: no-op implementations
     vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
-    vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda ts: [])
+    head_detection_payload = {
+        "horizontal_state": "HEAD_STATIC",
+        "vertical_state": "HEAD_STATIC",
+        "horizontal_angle": 0.0,
+        "vertical_angle": 0.0,
+        "confidence": 1.0,
+    }
+    vp.head_shake_detector = SimpleNamespace(
+        detect=lambda *a, **k: head_detection_payload,
+        update=lambda *a, **k: head_detection_payload,
+        check_alerts=lambda ts: [],
+    )
     vp.hand_raise_detector = SimpleNamespace(detect=lambda lm: {"left_hand_raised": False, "right_hand_raised": False})
     vp.video_writer = SimpleNamespace(write=lambda fr: None)
     vp.csv_writer = None  # write_results_to_csv was monkeypatched to no-op
@@ -348,6 +367,13 @@ def test___enter___fps_fallback_on_invalid(monkeypatch):
     monkeypatch.setattr("src.video_processor.cv2.VideoCapture", lambda p: FakeCap(p))
     monkeypatch.setattr("src.video_processor.setup_video_writer", lambda *a, **k: SimpleNamespace(release=lambda: None))
     monkeypatch.setattr("src.video_processor.setup_csv_writer", lambda f: object())
+    monkeypatch.setattr("src.video_processor.PoseEstimator", lambda: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.MovementAnalyzer", lambda: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.UserClassifier", lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.DwellTimeDetector", lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.PostureMonitor", lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.HeadShakeDetector", lambda *a, **k: SimpleNamespace())
+    monkeypatch.setattr("src.video_processor.HandRaiseDetector", lambda *a, **k: SimpleNamespace())
     # open is a built-in, patch there (module does not expose open)
     monkeypatch.setattr("builtins.open", mock_open())
 
@@ -409,7 +435,18 @@ def test__process_frame_initializes_and_writes_when_landmarks_present(monkeypatc
         update=lambda *a, **k: None, get_current_status=lambda: {"is_long_stay": False}, stay_info=None
     )
     vp.posture_monitor = SimpleNamespace(update=lambda *a, **k: [])
-    vp.head_shake_detector = SimpleNamespace(update=lambda *a, **k: {}, check_alerts=lambda *a, **k: [])
+    head_detection_payload = {
+        "horizontal_state": "HEAD_STATIC",
+        "vertical_state": "HEAD_STATIC",
+        "horizontal_angle": 0.0,
+        "vertical_angle": 0.0,
+        "confidence": 1.0,
+    }
+    vp.head_shake_detector = SimpleNamespace(
+        detect=lambda *a, **k: head_detection_payload,
+        update=lambda *a, **k: head_detection_payload,
+        check_alerts=lambda *a, **k: [],
+    )
     vp.hand_raise_detector = SimpleNamespace(detect=lambda lm: {"left_hand_raised": False, "right_hand_raised": False})
     monkeypatch.setattr("src.video_processor.draw_landmarks", lambda f, lm: f)
     monkeypatch.setattr(

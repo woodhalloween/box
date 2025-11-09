@@ -79,6 +79,11 @@ class MovementAnalyzer:
                 continue
 
             angle = calculate_angle(p1, p2, p3)
+
+            # NaNの場合はスキップ（ゼロベクトルなどで角度が定義できない場合）
+            if np.isnan(angle):
+                continue
+
             previous_angle = self.previous_angles.get(angle_name)
 
             state = MovementState.UNKNOWN
@@ -128,8 +133,12 @@ class MovementAnalyzer:
         # 体幹の傾き角度を計算
         body_tilt_angle = calculate_angle(p_shoulder_mid_3d, p_hip_mid_3d, p_hip_vertical)
 
-        # 傾きの状態を判定（150度以下で前傾判定）
-        tilt_state = MovementState.FORWARD_TILT if body_tilt_angle <= 150 else MovementState.UPRIGHT
+        # NaNの場合はスキップ（ゼロベクトルなどで角度が定義できない場合）
+        if not np.isnan(body_tilt_angle):
+            # 傾きの状態を判定（150度以下で前傾判定）
+            tilt_state = MovementState.FORWARD_TILT if body_tilt_angle <= 150 else MovementState.UPRIGHT
+        else:
+            tilt_state = MovementState.UNKNOWN
 
         analysis_results[Angle.BODY_TILT] = {
             "angle": body_tilt_angle,
@@ -150,17 +159,19 @@ class MovementAnalyzer:
         # 肩を中心に、腰、肩、鼻がなす角度を計算
         neck_trunk_angle = calculate_angle(p_hip_mid_3d, p_shoulder_mid_3d, p_nose_3d)
 
-        # 状態を判定
-        neck_state = (
-            MovementState.HUNCH
-            if neck_trunk_angle <= 150  # 150度以下なら猫背とみなす
-            else MovementState.STRAIGHT
-        )
+        # NaNの場合はスキップ（ゼロベクトルなどで角度が定義できない場合）
+        if not np.isnan(neck_trunk_angle):
+            # 状態を判定
+            neck_state = (
+                MovementState.HUNCH
+                if neck_trunk_angle <= 150  # 150度以下なら猫背とみなす
+                else MovementState.STRAIGHT
+            )
 
-        analysis_results[Angle.NECK_TRUNK_ANGLE] = {
-            "angle": neck_trunk_angle,
-            "state": neck_state,
-        }
+            analysis_results[Angle.NECK_TRUNK_ANGLE] = {
+                "angle": neck_trunk_angle,
+                "state": neck_state,
+            }
         # --- ここまで ---
 
         # --- 側屈（LATERAL_TILT）計算 ---

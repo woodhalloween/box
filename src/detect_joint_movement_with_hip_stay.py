@@ -22,7 +22,7 @@ from .analysis.dwell_time_detector import DwellTimeDetector  # noqa: F401
 from .analysis.posture_monitor import PostureMonitor
 from .analysis.user_classifier import UserClassifier  # noqa: F401
 from .definitions import Angle, MovementState
-from .head_shake_detector import HeadShakeDetector
+from .detectors.head_shake_detector_refactored import HeadShakeDetector
 from .movement_analyzer import MovementAnalyzer  # noqa: F401
 from .pose.definitions import BodyPart
 from .pose_estimator import PoseEstimator  # noqa: F401

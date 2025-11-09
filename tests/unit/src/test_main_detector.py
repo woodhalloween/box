@@ -141,5 +141,8 @@ class TestMainDetector(unittest.TestCase):
             pm_alert_threshold_ratio=0.7,
             uc_threshold_deg=90.0,
             uc_moving_window_seconds=5,
+            enable_mediapipe_head_turn=True,
+            mediapipe_yaw_threshold_right=30.0,
+            mediapipe_yaw_threshold_left=-30.0,
         )
         mock_processor_instance.run.assert_called_once()

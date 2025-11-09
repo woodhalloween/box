@@ -6,7 +6,7 @@ MediaPipe Face Mesh頭部方向検出器のユニットテスト。
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -42,7 +42,7 @@ def create_mock_face_landmarks(nose_x: float = 0.5, left_eye_x: float = 0.4, rig
     mock_landmarks.landmark = []
 
     # 468個のランドマークを作成（必要な部分のみ実装）
-    for i in range(468):
+    for _ in range(468):
         landmark = Mock()
         landmark.x = 0.5
         landmark.y = 0.5
@@ -79,14 +79,13 @@ def create_mock_frame(width: int = 640, height: int = 480) -> np.ndarray:
 def detector():
     """MediaPipeFaceMeshHeadTurnDetectorのインスタンスを生成するpytestフィクスチャ。"""
     with patch("src.detectors.mediapipe_head_turn_detector.mp.solutions.face_mesh.FaceMesh"):
-        detector = MediaPipeFaceMeshHeadTurnDetector(
+        return MediaPipeFaceMeshHeadTurnDetector(
             yaw_threshold_right=YAW_THRESHOLD_RIGHT,
             yaw_threshold_left=YAW_THRESHOLD_LEFT,
             min_consecutive_frames=MIN_CONSECUTIVE_FRAMES,
             cooldown_sec=COOLDOWN_SEC,
             confidence_threshold=CONFIDENCE_THRESHOLD,
         )
-        return detector
 
 
 # --- 初期化テスト ---
@@ -216,7 +215,7 @@ def test_update_consecutive_frames_direction_change(detector):
 
 def test_sustained_flag_below_threshold(detector):
     """連続フレーム数が閾値未満の場合、持続フラグがFalseであることをテストする。"""
-    for i in range(MIN_CONSECUTIVE_FRAMES - 1):
+    for _ in range(MIN_CONSECUTIVE_FRAMES - 1):
         detector._update_consecutive_frames("右向き")
 
     assert detector._head_state.is_sustained is False
@@ -224,7 +223,7 @@ def test_sustained_flag_below_threshold(detector):
 
 def test_sustained_flag_at_threshold(detector):
     """連続フレーム数が閾値に達した場合、持続フラグがTrueになることをテストする。"""
-    for i in range(MIN_CONSECUTIVE_FRAMES):
+    for _ in range(MIN_CONSECUTIVE_FRAMES):
         detector._update_consecutive_frames("右向き")
 
     assert detector._head_state.is_sustained is True
@@ -471,4 +470,3 @@ def test_full_detection_workflow(detector):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

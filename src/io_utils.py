@@ -14,7 +14,7 @@ import numpy as np
 from .analysis.dwell_time_detector import DwellTimeDetector
 from .analysis.posture_monitor import PostureMonitor
 from .definitions import Angle, MovementState
-from .head_shake_detector import HeadShakeDetector
+from .detectors.head_shake_detector_refactored import HeadShakeDetector
 
 
 @overload

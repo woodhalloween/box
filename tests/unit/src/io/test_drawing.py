@@ -7,6 +7,7 @@ from PIL import Image
 from src.definitions import Angle, MovementState
 from src.io.drawing import (
     draw_analysis_results,
+    draw_color_frame,
     draw_japanese_text,
     draw_landmarks,
 )
@@ -92,3 +93,209 @@ def test_draw_analysis_results_english(mocker, dummy_image):
     mock_draw_jp.assert_called_once()
     # 英語の結果表示でputTextが1回呼ばれる
     mock_put_text.assert_called_once()
+
+
+def test_draw_color_frame_comma_separated_rgb(dummy_image):
+    """draw_color_frameがカンマ区切りのRGB形式を正しく解析するかテストする"""
+    color_str = "255,0,0"  # Red in RGB
+    result = draw_color_frame(dummy_image, color_str, alpha=0.5, border_width=10)
+
+    # 結果の形状と型を確認
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+    assert isinstance(result, np.ndarray)
+
+
+def test_draw_color_frame_hex_format(dummy_image):
+    """draw_color_frameが16進数形式の色を正しく解析するかテストする"""
+    color_str = "#FF0000"  # Red in hex
+    result = draw_color_frame(dummy_image, color_str, alpha=0.5, border_width=10)
+
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_hex_with_leading_hash(dummy_image):
+    """draw_color_frameが#で始まる16進数形式を正しく処理するかテストする"""
+    color_str = "#00FF00"  # Green in hex
+    result = draw_color_frame(dummy_image, color_str)
+
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_invalid_color_value_error(dummy_image, capsys):
+    """draw_color_frameが無効な色文字列（ValueError）の場合にフォールバックするかテストする"""
+    color_str = "invalid,color,string"
+    result = draw_color_frame(dummy_image, color_str)
+
+    # エラーメッセージが出力されることを確認
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse color" in captured.out
+
+    # 結果は正常に返される（赤色でフォールバック）
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_invalid_color_index_error(dummy_image, capsys):
+    """draw_color_frameが不完全な色文字列（IndexError）の場合にフォールバックするかテストする"""
+    color_str = "255,0"  # 不完全なRGB値
+    result = draw_color_frame(dummy_image, color_str)
+
+    # エラーメッセージが出力されることを確認
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse color" in captured.out
+
+    # 結果は正常に返される
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_invalid_hex_format(dummy_image, capsys):
+    """draw_color_frameが無効な16進数形式の場合にフォールバックするかテストする"""
+    color_str = "#GG0000"  # 無効な16進数文字
+    result = draw_color_frame(dummy_image, color_str)
+
+    # エラーメッセージが出力されることを確認
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse color" in captured.out
+
+    # 結果は正常に返される
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_short_hex_string(dummy_image, capsys):
+    """draw_color_frameが短い16進数文字列（IndexError）の場合にフォールバックするかテストする"""
+    color_str = "#FF"  # 短すぎる16進数文字列
+    result = draw_color_frame(dummy_image, color_str)
+
+    # エラーメッセージが出力されることを確認
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse color" in captured.out
+
+    # 結果は正常に返される
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_empty_string(dummy_image, capsys):
+    """draw_color_frameが空文字列の場合にフォールバックするかテストする"""
+    color_str = ""
+    result = draw_color_frame(dummy_image, color_str)
+
+    # エラーメッセージが出力されることを確認
+    captured = capsys.readouterr()
+    assert "Warning: Could not parse color" in captured.out
+
+    # 結果は正常に返される
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_with_spaces_in_rgb(dummy_image):
+    """draw_color_frameがスペースを含むRGB文字列を正しく解析するかテストする"""
+    color_str = " 255 , 0 , 0 "  # スペースを含む
+    result = draw_color_frame(dummy_image, color_str)
+
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_calls_cv2_rectangle(mocker, dummy_image):
+    """draw_color_frameがcv2.rectangleを正しく呼び出すかテストする"""
+    mock_rectangle = mocker.patch("cv2.rectangle")
+
+    draw_color_frame(dummy_image, "255,0,0", border_width=30)
+
+    # 4つの矩形が描画される（上、下、左、右）
+    assert mock_rectangle.call_count == 4
+
+
+def test_draw_color_frame_border_width_values(dummy_image):
+    """draw_color_frameが異なるborder_width値で動作するかテストする"""
+    for border_width in [1, 10, 30, 50]:
+        result = draw_color_frame(dummy_image, "255,0,0", border_width=border_width)
+        assert result.shape == dummy_image.shape
+        assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_alpha_values(dummy_image):
+    """draw_color_frameが異なるalpha値で動作するかテストする"""
+    for alpha in [0.0, 0.3, 0.5, 1.0]:
+        result = draw_color_frame(dummy_image, "255,0,0", alpha=alpha)
+        assert result.shape == dummy_image.shape
+        assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_large_border_width(dummy_image):
+    """draw_color_frameがフレームサイズより大きなborder_widthでも動作するかテストする"""
+    # border_widthがフレームサイズより大きい場合でもクラッシュしないことを確認
+    result = draw_color_frame(dummy_image, "255,0,0", border_width=150)
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_small_frame(mocker):
+    """draw_color_frameが小さいフレームでも動作するかテストする"""
+    small_frame = np.zeros((50, 50, 3), dtype=np.uint8)
+    mock_rectangle = mocker.patch("cv2.rectangle")
+
+    result = draw_color_frame(small_frame, "255,0,0", border_width=10)
+
+    assert result.shape == small_frame.shape
+    assert result.dtype == np.uint8
+    # 4つの矩形が描画されることを確認
+    assert mock_rectangle.call_count == 4
+
+
+def test_draw_color_frame_different_colors(dummy_image):
+    """draw_color_frameが異なる色で動作するかテストする"""
+    colors = [
+        "0,255,0",  # Green
+        "0,0,255",  # Blue
+        "255,255,0",  # Yellow
+        "#00FF00",  # Green in hex
+        "#0000FF",  # Blue in hex
+    ]
+
+    for color in colors:
+        result = draw_color_frame(dummy_image, color)
+        assert result.shape == dummy_image.shape
+        assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_returns_uint8(dummy_image):
+    """draw_color_frameがuint8型を返すかテストする"""
+    result = draw_color_frame(dummy_image, "255,0,0")
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_preserves_frame_shape(dummy_image):
+    """draw_color_frameがフレームの形状を保持するかテストする"""
+    original_shape = dummy_image.shape
+    result = draw_color_frame(dummy_image, "255,0,0")
+    assert result.shape == original_shape
+
+
+def test_draw_color_frame_default_parameters(dummy_image):
+    """draw_color_frameがデフォルトパラメータで動作するかテストする"""
+    result = draw_color_frame(dummy_image, "255,0,0")
+    assert result.shape == dummy_image.shape
+    assert result.dtype == np.uint8
+
+
+def test_draw_color_frame_border_actually_drawn(dummy_image):
+    """draw_color_frameが実際にボーダーを描画するかテストする（ピクセル値の変化を確認）"""
+    # 元のフレームは全て0（黒）
+    original_sum = dummy_image.sum()
+
+    # ボーダーを描画
+    result = draw_color_frame(dummy_image, "255,0,0", alpha=1.0, border_width=10)
+
+    # ボーダーが描画されていれば、フレームの値が変化しているはず
+    result_sum = result.sum()
+    # ボーダーが描画されていれば、sumは増加する（alpha=1.0なので完全に上書き）
+    # ボーダー領域には色が適用されるため、合計値は増加する
+    assert result_sum > original_sum

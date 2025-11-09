@@ -9,6 +9,11 @@ from enum import IntEnum
 import numpy as np
 import pytest
 
+from src.analysis.dwell_time_detector import DwellTimeDetector
+from src.definitions import Angle, MovementState
+from src.movement_analyzer import MovementAnalyzer
+from src.pose.definitions import BodyPart
+
 # ---------------------------------------------------------------------------
 # Mediapipe stub (tests only)
 # ---------------------------------------------------------------------------
@@ -100,11 +105,6 @@ def _ensure_mediapipe_stub() -> None:
 
 
 _ensure_mediapipe_stub()
-
-from src.analysis.dwell_time_detector import DwellTimeDetector
-from src.definitions import Angle, MovementState
-from src.movement_analyzer import MovementAnalyzer
-from src.pose.definitions import BodyPart
 
 
 @pytest.fixture

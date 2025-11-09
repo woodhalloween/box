@@ -29,8 +29,6 @@ def estimate_total_frames(
                 duration_seconds = original_frame_count / original_fps
                 calculated_frames = duration_seconds * fps
                 total_frames = round(calculated_frames)
-                if calculated_frames - int(calculated_frames) >= 0.5:
-                    total_frames += 1
                 print(
                     f"Progress bar: Adjusted frame count from {original_frame_count} to {total_frames} "
                     f"(fps: {original_fps} -> {fps}, calculated: {calculated_frames:.2f})"

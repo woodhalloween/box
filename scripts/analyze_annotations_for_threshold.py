@@ -28,7 +28,7 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.detectors.mediapipe_head_turn_detector import MediaPipeFaceMeshHeadTurnDetector
+from src.detectors.mediapipe_head_turn_detector import MediaPipeFaceMeshHeadTurnDetector  # noqa: E402
 
 
 def load_annotations(annotations_path: Path) -> dict[str, dict[int, str]]:
@@ -42,7 +42,7 @@ def load_annotations(annotations_path: Path) -> dict[str, dict[int, str]]:
     """
     annotations = defaultdict(dict)
 
-    with open(annotations_path, "r", encoding="utf-8") as f:
+    with open(annotations_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             video_id = row["VideoID"]
@@ -202,9 +202,7 @@ def recommend_thresholds(statistics: dict[str, dict]) -> dict[str, float]:
     return recommendations
 
 
-def generate_report(
-    statistics: dict[str, dict], recommendations: dict[str, float], output_path: Path
-) -> None:
+def generate_report(statistics: dict[str, dict], recommendations: dict[str, float], output_path: Path) -> None:
     """分析結果をMarkdownレポートとして出力する。
 
     Args:
@@ -256,7 +254,8 @@ def generate_report(
             "",
             f"- **右向き**: ヨー角 >= {recommendations['yaw_threshold_right']:.2f}度",
             f"- **左向き**: ヨー角 <= {recommendations['yaw_threshold_left']:.2f}度",
-            f"- **正面**: {recommendations['yaw_threshold_left']:.2f}度 < ヨー角 < {recommendations['yaw_threshold_right']:.2f}度",
+            f"- **正面**: {recommendations['yaw_threshold_left']:.2f}度 "
+            f"< ヨー角 < {recommendations['yaw_threshold_right']:.2f}度",
             "",
             "## 4. 分析方法",
             "",
@@ -366,4 +365,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

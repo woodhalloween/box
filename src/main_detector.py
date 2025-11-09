@@ -44,6 +44,9 @@ def process_video(
             pm_alert_threshold_ratio=pm_alert_threshold_ratio,
             uc_threshold_deg=uc_threshold_deg,
             uc_moving_window_seconds=uc_moving_window_seconds,
+            enable_mediapipe_head_turn=True,
+            mediapipe_yaw_threshold_right=30.0,
+            mediapipe_yaw_threshold_left=-30.0,
         ) as processor:
             processor.run()
     except OSError as e:
